@@ -209,6 +209,8 @@ class MelTransformer(Transformer):
     
     def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout):
         tar_inp = tar[:, :-1, :]
+        # rest = tf.shape(inp)[1] % 2
+        # inp = inp[:, :-rest, :]
         tar_real = tar[:, 1:, :]
         tar_stop_prob = stop_prob[:, 1:]
         enc_padding_mask, combined_mask, dec_padding_mask = self.create_masks(inp, tar_inp)
@@ -238,7 +240,8 @@ class MelTransformer(Transformer):
              enc_padding_mask,
              look_ahead_mask,
              dec_padding_mask,
-             decoder_prenet_dropout):
+             decoder_prenet_dropout,
+             reduction_factor=1):
         enc_input = self.encoder_prenet(inputs)
         enc_output = self.encoder(inputs=enc_input,
                                   training=training,
@@ -248,7 +251,8 @@ class MelTransformer(Transformer):
                                                      enc_output=enc_output,
                                                      training=training,
                                                      look_ahead_mask=look_ahead_mask,
-                                                     padding_mask=dec_padding_mask)
+                                                     padding_mask=dec_padding_mask,
+                                                     reduction_factor=reduction_factor)
         model_output = self.decoder_postnet(inputs=dec_output, training=training)
         model_output.update({'attention_weights': attention_weights, 'decoder_output': dec_output})
         return model_output

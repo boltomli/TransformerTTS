@@ -60,7 +60,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, perm=[0, 2, 1, 3])
     
-    def call(self, v, k, q_in, mask):
+    def call(self, v, k, q_in, mask, reduction_factor=1):
         batch_size = tf.shape(q_in)[0]
         
         q = self.wq(q_in)  # (batch_size, seq_len, d_model)
@@ -70,8 +70,21 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         q = self.split_heads(q, batch_size)  # (batch_size, num_heads, seq_len_q, depth)
         k = self.split_heads(k, batch_size)  # (batch_size, num_heads, seq_len_k, depth)
         v = self.split_heads(v, batch_size)  # (batch_size, num_heads, seq_len_v, depth)
-        
+
+        if reduction_factor > 1:
+            
+            q = tf.reshape(q, (batch_size, -1, int(tf.shape(q)[2]/reduction_factor), tf.shape(q)[3]*reduction_factor))
+            k = tf.reshape(k, (batch_size, -1, int(tf.shape(k)[2]/reduction_factor), tf.shape(k)[3]*reduction_factor))
+            v = tf.reshape(v, (batch_size, -1, int(tf.shape(v)[2]/reduction_factor), tf.shape(v)[3]*reduction_factor))
+            mask = 1 - tf.linalg.band_part(tf.ones((tf.shape(q)[2], tf.shape(k)[2])), -1, 0)
+
         scaled_attention, attention_weights = scaled_dot_product_attention(q, k, v, mask)
+        if reduction_factor > 1:
+            scaled_attention = tf.reshape(scaled_attention,
+                                          (tf.shape(scaled_attention)[0],
+                                           tf.shape(scaled_attention)[1],
+                                           tf.shape(scaled_attention)[2] * reduction_factor,
+                                           int(tf.shape(scaled_attention)[3] / reduction_factor)))
         
         scaled_attention = tf.transpose(scaled_attention,
                                         perm=[0, 2, 1, 3])  # (batch_size, seq_len_q, num_heads, depth)
@@ -97,7 +110,7 @@ class EncoderLayer(tf.keras.layers.Layer):
         self.dropout2 = tf.keras.layers.Dropout(rate)
     
     def call(self, x, training, mask):
-        attn_out, _ = self.mha(x, x, x, mask)  # (batch_size, input_seq_len, d_model)
+        attn_out, _ = self.mha(x, x, x, mask, reduction_factor=1)  # (batch_size, input_seq_len, d_model)
         attn_out = self.dropout1(attn_out, training=training)
         out1 = self.ln1(x + attn_out)  # (batch_size, input_seq_len, d_model)
         
@@ -145,12 +158,12 @@ class DecoderLayer(tf.keras.layers.Layer):
         self.dropout2 = tf.keras.layers.Dropout(rate)
         self.dropout3 = tf.keras.layers.Dropout(rate)
     
-    def call(self, x, enc_output, training, look_ahead_mask, padding_mask):
-        attn1, attn_weights_block1 = self.mha1(x, x, x, look_ahead_mask)
+    def call(self, x, enc_output, training, look_ahead_mask, padding_mask, reduction_factor=1):
+        attn1, attn_weights_block1 = self.mha1(x, k=x, q_in=x, mask=look_ahead_mask, reduction_factor=reduction_factor)
         attn1 = self.dropout1(attn1, training=training)
         out1 = self.layernorm1(attn1 + x)
         
-        attn2, attn_weights_block2 = self.mha2(enc_output, enc_output, out1, padding_mask)
+        attn2, attn_weights_block2 = self.mha2(enc_output, k=enc_output, q_in=out1, mask=padding_mask, reduction_factor=reduction_factor)
         attn2 = self.dropout2(attn2, training=training)
         out2 = self.layernorm2(attn2 + out1)
         
@@ -171,14 +184,14 @@ class Decoder(tf.keras.layers.Layer):
         self.dec_layers = [DecoderLayer(d_model, num_heads, dff, rate) for _ in range(num_layers)]
         self.dropout = tf.keras.layers.Dropout(rate)
     
-    def call(self, inputs, enc_output, training, look_ahead_mask, padding_mask):
+    def call(self, inputs, enc_output, training, look_ahead_mask, padding_mask, reduction_factor=1):
         seq_len = tf.shape(inputs)[1]
         attention_weights = {}
         x = inputs * tf.math.sqrt(tf.cast(self.d_model, tf.float32))
         x += self.pos_encoding[:, :seq_len, :]
         x = self.dropout(x, training=training)
         for i in range(self.num_layers):
-            x, block1, block2 = self.dec_layers[i](x, enc_output, training, look_ahead_mask, padding_mask)
+            x, block1, block2 = self.dec_layers[i](x, enc_output, training, look_ahead_mask, padding_mask, reduction_factor)
             
             attention_weights[f'decoder_layer{i + 1}_block1'] = block1
             attention_weights[f'decoder_layer{i + 1}_block2'] = block2
