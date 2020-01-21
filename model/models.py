@@ -52,7 +52,7 @@ class TextTransformer(Transformer):
                  encoder,
                  decoder,
                  tokenizer,
-                 debug = False):
+                 debug=False):
         super(TextTransformer, self).__init__(encoder_prenet,
                                               decoder_prenet,
                                               encoder,
@@ -152,7 +152,7 @@ class MelTransformer(Transformer):
                  decoder_postnet,
                  start_vec_value=-3,
                  end_vec_value=1,
-                 debug = False):
+                 debug=False):
         super(MelTransformer, self).__init__(encoder_prenet,
                                              decoder_prenet,
                                              encoder,
@@ -207,12 +207,16 @@ class MelTransformer(Transformer):
         combined_mask = tf.maximum(dec_target_padding_mask, look_ahead_mask)
         return enc_padding_mask, combined_mask, dec_padding_mask
     
-    def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout):
-        tar_inp = tar[:, :-1, :]
+    def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout, reduction_factor):
+        # tar_inp = tar[:, :, :]
+        tar_inp = tar
         # rest = tf.shape(inp)[1] % 2
         # inp = inp[:, :-rest, :]
-        tar_real = tar[:, 1:, :]
-        tar_stop_prob = stop_prob[:, 1:]
+        # tar_real = tar[:, 1:, :]
+        tar_real = tf.concat([tar[:, 1:, :], tf.cast(tf.zeros((tar.shape[0], 1, tar.shape[-1])), tf.float64)],
+                             axis=-2)  # shift target
+        # tar_stop_prob = stop_prob[:, 1:]
+        tar_stop_prob = stop_prob
         enc_padding_mask, combined_mask, dec_padding_mask = self.create_masks(inp, tar_inp)
         with tf.GradientTape() as tape:
             model_out = self.__call__(inputs=inp,
@@ -221,7 +225,8 @@ class MelTransformer(Transformer):
                                       enc_padding_mask=enc_padding_mask,
                                       look_ahead_mask=combined_mask,
                                       dec_padding_mask=dec_padding_mask,
-                                      decoder_prenet_dropout=decoder_prenet_dropout)
+                                      decoder_prenet_dropout=decoder_prenet_dropout,
+                                      reduction_factor=reduction_factor)
             loss, loss_vals = weighted_sum_losses(
                 (tar_real, tar_stop_prob, tar_real),
                 (model_out['final_output'], model_out['stop_prob'], model_out['mel_linear']),
@@ -289,11 +294,11 @@ class MelTextTransformer(Transformer):
             )(self._train_step)
         else:
             self.train_step = self._train_step
-        
+    
     def _check_tokenizer(self):
         for attribute in ['start_token_index', 'end_token_index', 'vocab_size']:
             assert hasattr(self.tokenizer, attribute), f'Tokenizer is missing {attribute}.'
-
+    
     def preprocess_mel(self, mel, clip_min=1e-5, clip_max=float('inf')):
         norm_mel = tf.cast(mel, tf.float32)
         norm_mel = tf.math.log(tf.clip_by_value(norm_mel, clip_value_min=clip_min, clip_value_max=clip_max))
@@ -404,11 +409,11 @@ class TextMelTransformer(Transformer):
             )(self._train_step)
         else:
             self.train_step = self._train_step
-            
+    
     def _check_tokenizer(self):
         for attribute in ['start_token_index', 'end_token_index', 'vocab_size']:
             assert hasattr(self.tokenizer, attribute), f'Tokenizer is missing {attribute}.'
-
+    
     def preprocess_mel(self, mel, clip_min=1e-5, clip_max=float('inf')):
         norm_mel = tf.cast(mel, tf.float32)
         norm_mel = tf.math.log(tf.clip_by_value(norm_mel, clip_value_min=clip_min, clip_value_max=clip_max))
@@ -443,10 +448,14 @@ class TextMelTransformer(Transformer):
         combined_mask = tf.maximum(dec_target_padding_mask, look_ahead_mask)
         return enc_padding_mask, combined_mask, dec_padding_mask
     
-    def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout):
-        tar_inp = tar[:, :-1]
-        tar_real = tar[:, 1:]
-        tar_stop_prob = stop_prob[:, 1:]
+    def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout, reduction_factor):
+        tar_inp = tar
+        # tar_real = tar[:, 1:]
+        # shift target
+        tar_real = tf.concat([tar[:, 1:], tf.cast(tf.zeros((tar.shape[0], 1, tar.shape[-1])), tf.float64)], axis=-2)
+        # tar_inp = tar[:, :-1]
+        tar_stop_prob = stop_prob
+        # tar_stop_prob = stop_prob[:, 1:]
         enc_padding_mask, combined_mask, dec_padding_mask = self.create_masks(inp, tar_inp)
         with tf.GradientTape() as tape:
             model_out = self.__call__(inputs=inp,
@@ -455,7 +464,8 @@ class TextMelTransformer(Transformer):
                                       enc_padding_mask=enc_padding_mask,
                                       look_ahead_mask=combined_mask,
                                       dec_padding_mask=dec_padding_mask,
-                                      decoder_prenet_dropout=decoder_prenet_dropout)
+                                      decoder_prenet_dropout=decoder_prenet_dropout,
+                                      reduction_factor=reduction_factor)
             loss, loss_vals = weighted_sum_losses((tar_real, tar_stop_prob, tar_real),
                                                   (model_out['final_output'],
                                                    model_out['stop_prob'],
@@ -474,7 +484,8 @@ class TextMelTransformer(Transformer):
              enc_padding_mask,
              look_ahead_mask,
              dec_padding_mask,
-             decoder_prenet_dropout):
+             decoder_prenet_dropout,
+             reduction_factor=1):
         enc_input = self.encoder_prenet(inputs)
         enc_output = self.encoder(inputs=enc_input,
                                   training=training,
@@ -484,7 +495,8 @@ class TextMelTransformer(Transformer):
                                                      enc_output=enc_output,
                                                      training=training,
                                                      look_ahead_mask=look_ahead_mask,
-                                                     padding_mask=dec_padding_mask)
+                                                     padding_mask=dec_padding_mask,
+                                                     reduction_factor=reduction_factor)
         model_output = self.decoder_postnet(inputs=dec_output, training=training)
         model_output.update({'attention_weights': attention_weights, 'decoder_output': dec_output})
         return model_output

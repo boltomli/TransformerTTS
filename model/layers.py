@@ -72,7 +72,11 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         v = self.split_heads(v, batch_size)  # (batch_size, num_heads, seq_len_v, depth)
 
         if reduction_factor > 1:
-            
+            # pad due to missing end_vec
+            # zeros = tf.zeros((batch_size, 1, 1, tf.shape(q)[3]))
+            # q = tf.concat([q, zeros], axis=-2)
+            # k = tf.concat([k, zeros], axis=-2)
+            # v = tf.concat([v, zeros], axis=-2)
             q = tf.reshape(q, (batch_size, -1, int(tf.shape(q)[2]/reduction_factor), tf.shape(q)[3]*reduction_factor))
             k = tf.reshape(k, (batch_size, -1, int(tf.shape(k)[2]/reduction_factor), tf.shape(k)[3]*reduction_factor))
             v = tf.reshape(v, (batch_size, -1, int(tf.shape(v)[2]/reduction_factor), tf.shape(v)[3]*reduction_factor))
@@ -85,11 +89,13 @@ class MultiHeadAttention(tf.keras.layers.Layer):
                                            tf.shape(scaled_attention)[1],
                                            tf.shape(scaled_attention)[2] * reduction_factor,
                                            int(tf.shape(scaled_attention)[3] / reduction_factor)))
-        
+            # scaled_attention = scaled_attention[:,:,:-1, :]
+
         scaled_attention = tf.transpose(scaled_attention,
                                         perm=[0, 2, 1, 3])  # (batch_size, seq_len_q, num_heads, depth)
         concat_attention = tf.reshape(scaled_attention,
                                       (batch_size, -1, self.d_model))  # (batch_size, seq_len_q, d_model)
+        # concat_attention = concat_attention[:,-1,:]
         concat_query = tf.concat([q_in, concat_attention], axis=-1)
         output = self.dense(concat_query)  # (batch_size, seq_len_q, d_model)
         

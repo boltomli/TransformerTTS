@@ -134,16 +134,18 @@ class Combiner:  # (tf.keras.Model):
         masked_tensor = tensor * mask
         return masked_tensor
     
-    def train_step(self, text, mel, stop, speech_decoder_prenet_dropout, mask_prob=0.):
+    def train_step(self, text, mel, stop, speech_decoder_prenet_dropout, mask_prob=0., reduction_factor=1):
         masked_text = self.random_text_mask(text, mask_prob)
         masked_mel = self.random_mel_mask(mel, mask_prob)
         output = {
-            # 'text_to_text': self.transformers['text_to_text'].train_step(masked_text, text),
+            'text_to_text': self.transformers['text_to_text'].train_step(masked_text, text),
             'mel_to_mel': self.transformers['mel_to_mel'].train_step(masked_mel, mel, stop,
-                                                                     decoder_prenet_dropout=speech_decoder_prenet_dropout),
-            # 'text_to_mel': self.transformers['text_to_mel'].train_step(text, mel, stop,
-            #                                                            decoder_prenet_dropout=speech_decoder_prenet_dropout),
-            # 'mel_to_text': self.transformers['mel_to_text'].train_step(mel, text)
+                                                                     decoder_prenet_dropout=speech_decoder_prenet_dropout,
+                                                                     reduction_factor=reduction_factor),
+            'text_to_mel': self.transformers['text_to_mel'].train_step(text, mel, stop,
+                                                                       decoder_prenet_dropout=speech_decoder_prenet_dropout,
+                                                                       reduction_factor=reduction_factor),
+            'mel_to_text': self.transformers['mel_to_text'].train_step(mel, text)
         }
         
         return output
