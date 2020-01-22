@@ -167,7 +167,8 @@ class MelTransformer(Transformer):
                     tf.TensorSpec(shape=(None, None, decoder_postnet.mel_channels), dtype=tf.float64),
                     tf.TensorSpec(shape=(None, None, decoder_postnet.mel_channels), dtype=tf.float64),
                     tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32)
+                    tf.TensorSpec(shape=(None), dtype=tf.float32),
+                    tf.TensorSpec(shape=(None), dtype=tf.int32)
                 ]
             )(self._train_step)
         else:
@@ -210,10 +211,8 @@ class MelTransformer(Transformer):
     def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout, reduction_factor):
         # tar_inp = tar[:, :, :]
         tar_inp = tar
-        # rest = tf.shape(inp)[1] % 2
-        # inp = inp[:, :-rest, :]
         # tar_real = tar[:, 1:, :]
-        tar_real = tf.concat([tar[:, 1:, :], tf.cast(tf.zeros((tar.shape[0], 1, tar.shape[-1])), tf.float64)],
+        tar_real = tf.concat([tar[:, 1:, :], tf.cast(tf.zeros((tf.shape(tar)[0], 1, tf.shape(tar)[-1])), tf.float64)],
                              axis=-2)  # shift target
         # tar_stop_prob = stop_prob[:, 1:]
         tar_stop_prob = stop_prob
@@ -404,7 +403,8 @@ class TextMelTransformer(Transformer):
                     tf.TensorSpec(shape=(None, None), dtype=tf.int64),
                     tf.TensorSpec(shape=(None, None, decoder_postnet.mel_channels), dtype=tf.float64),
                     tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32)
+                    tf.TensorSpec(shape=(None), dtype=tf.float32),
+                    tf.TensorSpec(shape=(None), dtype=tf.int32)
                 ]
             )(self._train_step)
         else:
@@ -452,7 +452,7 @@ class TextMelTransformer(Transformer):
         tar_inp = tar
         # tar_real = tar[:, 1:]
         # shift target
-        tar_real = tf.concat([tar[:, 1:], tf.cast(tf.zeros((tar.shape[0], 1, tar.shape[-1])), tf.float64)], axis=-2)
+        tar_real = tf.concat([tar[:, 1:], tf.cast(tf.zeros((tf.shape(tar)[0], 1, tf.shape(tar)[-1])), tf.float64)], axis=-2)
         # tar_inp = tar[:, :-1]
         tar_stop_prob = stop_prob
         # tar_stop_prob = stop_prob[:, 1:]

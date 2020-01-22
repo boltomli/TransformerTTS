@@ -61,6 +61,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         return tf.transpose(x, perm=[0, 2, 1, 3])
     
     def call(self, v, k, q_in, mask, reduction_factor=1):
+        reduction_factor = tf.cast(reduction_factor, tf.int32)
         batch_size = tf.shape(q_in)[0]
         
         q = self.wq(q_in)  # (batch_size, seq_len, d_model)

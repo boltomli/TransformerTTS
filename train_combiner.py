@@ -1,8 +1,8 @@
 import os
 import datetime
 import argparse
-from pathlib import Path
 
+import yaml
 import tensorflow as tf
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -15,55 +15,12 @@ np.random.seed(42)
 tf.random.set_seed(42)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--mel_dir', dest='MEL_DIR', type=str)
-parser.add_argument('--n_samples', dest='MAX_SAMPLES', default=300, type=int)
-parser.add_argument('--dropout', dest='DROPOUT', default=0.1, type=float)
-parser.add_argument('--noisestd', dest='NOISE_STD', default=0.2, type=float)
-parser.add_argument('--mel', dest='MEL_CHANNELS', default=80, type=int)
-parser.add_argument('--epochs', dest='EPOCHS', default=10000, type=int)
-parser.add_argument('--batch_size', dest='BATCH_SIZE', default=16, type=int)
-parser.add_argument('--text_freq', dest='TEXT_FREQ', default=1000, type=int)
-parser.add_argument('--image_freq', dest='IMAGE_FREQ', default=10, type=int)
-parser.add_argument('--learning_rate', dest='LEARNING_RATE', default=1e-4, type=float)
-parser.add_argument('--mask_prob', dest='MASK_PROB', default=0.3, type=float)
+parser.add_argument('--mel_dir', dest='mel_dir', type=str)
+parser.add_argument('--metafile', dest='metafile', type=str)
+parser.add_argument('--log_dir', dest='log_dir', type=str)
+parser.add_argument('--config', dest='config', type=str)
 args = parser.parse_args()
-
-mel_path = Path(args.MEL_DIR) / 'mels'
-metafile = Path(args.MEL_DIR) / 'train_metafile.txt'
-
-tokenizer_type = 'char'
-tokenizer_alphabet = None
-# speech_encoder_num_layers = 1
-speech_encoder_num_layers = 4
-speech_decoder_num_layers = 4
-text_encoder_num_layers = 1
-text_decoder_num_layers = 4
-speech_model_dimension = 256
-text_model_dimension = 256
-speech_encoder_num_heads = 4
-# speech_encoder_num_heads = 1
-speech_decoder_num_heads = 4
-# speech_decoder_num_heads = 1
-text_encoder_num_heads = 4
-text_decoder_num_heads = 4
-text_encoder_feed_forward_dimension = 512
-text_decoder_feed_forward_dimension = 512
-speech_encoder_feed_forward_dimension = 512
-speech_decoder_feed_forward_dimension = 512
-speech_encoder_prenet_dimension = 256
-speech_decoder_prenet_dimension = 256
-max_position_encoding = 10000
-speech_postnet_conv_filters = 256
-speech_postnet_conv_layers = 5
-speech_postnet_kernel_size = 5
-dropout_rate = args.DROPOUT
-
-sr = 22050
-N_EPOCHS = args.EPOCHS
-N_SAMPLES = args.MAX_SAMPLES
-image_freq = args.IMAGE_FREQ
-text_freq = args.TEXT_FREQ
-mel_channels = args.MEL_CHANNELS
+config = yaml.safe_load(open(args.config, 'r'))
 
 
 def norm_tensor(tensor):
@@ -108,59 +65,61 @@ def reduction_factor_schedule(step, reduction_factors, steps):
     return reduction_factors[steps > step][0]
 
 
-start_vec = np.ones((1, mel_channels)) * -3
-end_vec = np.ones((1, mel_channels))
+start_vec = np.ones((1, config['mel_channels'])) * -3
+end_vec = np.ones((1, config['mel_channels']))
 mel_text_stop_samples = []
 count = 0
 alphabet = set()
-reduction_factors = np.array([14, 7, 2, 1])
-divisible_by = np.lcm.reduce(reduction_factors)
-reduction_factor_steps = np.array([5_000, 10_000, 20_000, 30_000])
+if config['use_block_attention']:
+    block_attention_schedule = np.array(config['block_attention_schedule'])
+    divisible_by = np.lcm.reduce(block_attention_schedule[:, 0])
 
-with open(str(metafile), 'r', encoding='utf-8') as f:
+print('Loading data')
+with open(str(args.metafile), 'r', encoding='utf-8') as f:
     for l in f.readlines():
         l_split = l.split('|')
         text = l_split[-1].strip().lower()
-        mel_file = os.path.join(str(mel_path), l_split[0] + '.npy')
+        mel_file = os.path.join(str(args.mel_dir), l_split[0] + '.npy')
         norm_mel = get_norm_mel(mel_file, start_vec, end_vec, divisible_by=divisible_by)
         stop_probs = np.ones(norm_mel.shape[0], dtype=np.int64)
         stop_probs[-1] = 2
         mel_text_stop_samples.append((norm_mel, text, stop_probs))
         alphabet.update(list(text))
         count += 1
-        if count > N_SAMPLES:
+        if count > config['n_samples']:
             break
-
+print('Creating model')
 combiner = Combiner(
-    tokenizer_type='char',
-    mel_channels=mel_channels,
-    speech_encoder_num_layers=speech_encoder_num_layers,
-    speech_decoder_num_layers=speech_decoder_num_layers,
-    text_encoder_num_layers=text_encoder_num_layers,
-    text_decoder_num_layers=text_decoder_num_layers,
-    speech_model_dimension=speech_model_dimension,
-    text_model_dimension=text_model_dimension,
-    speech_encoder_num_heads=speech_encoder_num_heads,
-    speech_decoder_num_heads=speech_decoder_num_heads,
-    text_encoder_num_heads=text_encoder_num_heads,
-    text_decoder_num_heads=text_decoder_num_heads,
-    text_encoder_feed_forward_dimension=text_encoder_feed_forward_dimension,
-    text_decoder_feed_forward_dimension=text_decoder_feed_forward_dimension,
-    speech_encoder_feed_forward_dimension=speech_encoder_feed_forward_dimension,
-    speech_decoder_feed_forward_dimension=speech_decoder_feed_forward_dimension,
-    speech_encoder_prenet_dimension=speech_encoder_prenet_dimension,
-    speech_decoder_prenet_dimension=speech_decoder_prenet_dimension,
-    max_position_encoding=max_position_encoding,
-    speech_postnet_conv_filters=speech_postnet_conv_filters,
-    speech_postnet_conv_layers=speech_postnet_conv_layers,
-    speech_postnet_kernel_size=speech_postnet_kernel_size,
-    dropout_rate=dropout_rate,
+    tokenizer_type=config['tokenizer_type'],
+    mel_channels=config['mel_channels'],
+    speech_encoder_num_layers=config['speech_encoder_num_layers'],
+    speech_decoder_num_layers=config['speech_decoder_num_layers'],
+    text_encoder_num_layers=config['text_encoder_num_layers'],
+    text_decoder_num_layers=config['text_decoder_num_layers'],
+    speech_model_dimension=config['speech_model_dimension'],
+    text_model_dimension=config['text_model_dimension'],
+    speech_encoder_num_heads=config['speech_encoder_num_heads'],
+    speech_decoder_num_heads=config['speech_decoder_num_heads'],
+    text_encoder_num_heads=config['text_encoder_num_heads'],
+    text_decoder_num_heads=config['text_decoder_num_heads'],
+    text_encoder_feed_forward_dimension=config['text_encoder_feed_forward_dimension'],
+    text_decoder_feed_forward_dimension=config['text_decoder_feed_forward_dimension'],
+    speech_encoder_feed_forward_dimension=config['speech_encoder_feed_forward_dimension'],
+    speech_decoder_feed_forward_dimension=config['speech_decoder_feed_forward_dimension'],
+    speech_encoder_prenet_dimension=config['speech_encoder_prenet_dimension'],
+    speech_decoder_prenet_dimension=config['speech_decoder_prenet_dimension'],
+    max_position_encoding=config['max_position_encoding'],
+    speech_postnet_conv_filters=config['speech_postnet_conv_filters'],
+    speech_postnet_conv_layers=config['speech_postnet_conv_layers'],
+    speech_postnet_kernel_size=config['speech_postnet_kernel_size'],
+    dropout_rate=config['dropout_rate'],
     mel_start_vec_value=-3,
     mel_end_vec_value=1,
     tokenizer_alphabet=sorted(list(alphabet)),
-    debug=True
+    debug=config['debug']
 )
 
+print('Creating dataset')
 train_list, test_list = train_test_split(mel_text_stop_samples, test_size=100, random_state=42)
 
 
@@ -179,49 +138,50 @@ train_set_generator = lambda: (item for item in tokenized_train_list)
 train_dataset = tf.data.Dataset.from_generator(train_set_generator,
                                                output_types=(tf.float64, tf.int64, tf.int64))
 train_dataset = train_dataset.shuffle(1000).padded_batch(
-    args.BATCH_SIZE, padded_shapes=([-1, 80], [-1], [-1]), drop_remainder=True)
+    config['batch_size'], padded_shapes=([-1, 80], [-1], [-1]), drop_remainder=True)
 
 loss_coeffs = [1.0, 1.0, 1.0]
 combiner.transformers['mel_to_text'].compile(loss=masked_crossentropy,
-                                             optimizer=tf.keras.optimizers.Adam(args.LEARNING_RATE, beta_1=0.9,
+                                             optimizer=tf.keras.optimizers.Adam(config['learning_rate'], beta_1=0.9,
                                                                                 beta_2=0.98,
                                                                                 epsilon=1e-9))
 combiner.transformers['text_to_text'].compile(loss=masked_crossentropy,
-                                              optimizer=tf.keras.optimizers.Adam(args.LEARNING_RATE, beta_1=0.9,
+                                              optimizer=tf.keras.optimizers.Adam(config['learning_rate'], beta_1=0.9,
                                                                                  beta_2=0.98,
                                                                                  epsilon=1e-9))
 combiner.transformers['mel_to_mel'].compile(loss=[masked_mean_squared_error,
                                                   masked_crossentropy,
                                                   masked_mean_squared_error],
                                             loss_weights=loss_coeffs,
-                                            optimizer=tf.keras.optimizers.Adam(args.LEARNING_RATE, beta_1=0.9,
+                                            optimizer=tf.keras.optimizers.Adam(config['learning_rate'], beta_1=0.9,
                                                                                beta_2=0.98,
                                                                                epsilon=1e-9))
 combiner.transformers['text_to_mel'].compile(loss=[masked_mean_squared_error,
                                                    masked_crossentropy,
                                                    masked_mean_squared_error],
                                              loss_weights=loss_coeffs,
-                                             optimizer=tf.keras.optimizers.Adam(args.LEARNING_RATE, beta_1=0.9,
+                                             optimizer=tf.keras.optimizers.Adam(config['learning_rate'], beta_1=0.9,
                                                                                 beta_2=0.98,
                                                                                 epsilon=1e-9))
 batch_count = 0
 losses = {}
 summary_writers = {}
 
-weights_paths = {}
-# kinds = ['text_to_mel']
-kinds = ['text_to_text', 'mel_to_mel', 'text_to_mel', 'mel_to_text']
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-os.makedirs(f'/tmp/weights/train/{current_time}/', exist_ok=False)
-for kind in kinds:
-    summary_writers[kind] = tf.summary.create_file_writer(f'/tmp/summaries/train/{current_time}/{kind}')
-    losses[kind] = []
+weights_paths = os.path.join(args.log_dir, f'weights/{current_time}/')
+os.makedirs(weights_paths, exist_ok=False)
 
-weights_paths = f'/tmp/weights/train/{current_time}'
+kinds = ['text_to_text', 'mel_to_mel', 'text_to_mel', 'mel_to_text']
+for kind in kinds:
+    summary_writers[kind] = tf.summary.create_file_writer(os.path.join(args.log_dir, f'train/{current_time}/{kind}'))
+    losses[kind] = []
 
 
 def linear_dropout_schedule(step):
-    dout = max(((-0.9 + 0.5) / 20000.) * step + 0.9, .5)
+    mx = config['decoder_prenet_dropout_schedule_max']
+    mn = config['decoder_prenet_dropout_schedule_min']
+    max_steps = config['decoder_prenet_dropout_schedule_max_steps']
+    dout = max(((-mx + mn) / max_steps) * step + mx, mn)
     return tf.cast(dout, tf.float32)
 
 
@@ -242,26 +202,42 @@ def random_text_mask(tensor, mask_prob):
     masked_tensor = tensor * mask
     return masked_tensor
 
-print('Starting training')
 
-for epoch in range(N_EPOCHS):
+decoder_prenet_dropout = config['fixed_decoder_prenet_dropout']
+reduction_factor = 1
+
+print('Starting training')
+for epoch in range(config['epochs']):
     print(f'Epoch {epoch}')
     for (batch, (mel, text, stop)) in enumerate(train_dataset):
-        decoder_prenet_dropout = linear_dropout_schedule(batch_count)
-        reduction_factor = reduction_factor_schedule(batch_count, reduction_factors, reduction_factor_steps)
+        if config['use_decoder_prenet_dropout_schedule']:
+            decoder_prenet_dropout = linear_dropout_schedule(batch_count)
+        if config['use_block_attention']:
+            reduction_factor = reduction_factor_schedule(batch_count, block_attention_schedule[:, 0],
+                                                         block_attention_schedule[:, 1])
         output = combiner.train_step(text=text,
                                      mel=mel,
                                      stop=stop,
                                      speech_decoder_prenet_dropout=decoder_prenet_dropout,
-                                     mask_prob=args.MASK_PROB,
-                                     reduction_factor=reduction_factor)
+                                     mask_prob=config['mask_prob'],
+                                     reduction_factor=tf.cast(reduction_factor, tf.int32))
         
         with summary_writers['text_to_text'].as_default():
             tf.summary.scalar('dropout', decoder_prenet_dropout,
                               step=combiner.transformers['text_to_text'].optimizer.iterations)
         for kind in kinds:
             losses[kind].append(float(output[kind]['loss']))
-        if batch_count % image_freq == 0:
+        
+        print(f'\nbatch {batch_count}')
+        for kind in kinds:
+            with summary_writers[kind].as_default():
+                tf.summary.scalar('loss', output[kind]['loss'],
+                                  step=combiner.transformers[kind].optimizer.iterations)
+            print(f'{kind} mean loss: {sum(losses[kind]) / len(losses[kind])}')
+        
+        batch_count += 1
+        
+        if batch_count % config['image_freq'] == 0:
             for kind in kinds:
                 with summary_writers[kind].as_default():
                     plot_attention(output[kind], step=combiner.transformers[kind].optimizer.iterations,
@@ -288,13 +264,7 @@ for epoch in range(N_EPOCHS):
                         display_mel(mel_target, step=combiner.transformers['mel_to_mel'].optimizer.iterations,
                                     info_string='target mel {}'.format(i))
         
-        print(f'\nbatch {batch_count}')
-        for kind in kinds:
-            with summary_writers[kind].as_default():
-                tf.summary.scalar('loss', output[kind]['loss'], step=combiner.transformers[kind].optimizer.iterations)
-            print(f'{kind} mean loss: {sum(losses[kind]) / len(losses[kind])}')
-        
-        if batch_count % text_freq == 0:
+        if batch_count % config['text_freq'] == 0:
             pred = {}
             test_val = {}
             for i in range(0, 3):
@@ -308,4 +278,3 @@ for epoch in range(N_EPOCHS):
                         tf.summary.text(f'{kind} from validation', f'(pred) {pred[kind]}\n(target) {decoded_target}',
                                         step=combiner.transformers[kind].optimizer.iterations)
         #
-        batch_count += 1
