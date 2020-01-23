@@ -15,12 +15,13 @@ np.random.seed(42)
 tf.random.set_seed(42)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--mel_dir', dest='mel_dir', type=str)
+parser.add_argument('--meldir', dest='mel_dir', type=str)
 parser.add_argument('--metafile', dest='metafile', type=str)
-parser.add_argument('--log_dir', dest='log_dir', type=str)
+parser.add_argument('--logdir', dest='log_dir', type=str)
 parser.add_argument('--config', dest='config', type=str)
 args = parser.parse_args()
 config = yaml.safe_load(open(args.config, 'r'))
+args.log_dir = os.path.join(args.log_dir, os.path.splitext(os.path.basename(args.config))[0])
 
 
 def norm_tensor(tensor):
@@ -62,14 +63,17 @@ def get_norm_mel(mel_path, start_vec, end_vec, divisible_by=1):
 
 
 def reduction_factor_schedule(step, reduction_factors, steps):
-    return reduction_factors[steps > step][0]
-
+    if len(reduction_factors[steps > step]) > 0:
+        return reduction_factors[steps > step][0]
+    else:
+        return 1
 
 start_vec = np.ones((1, config['mel_channels'])) * -3
 end_vec = np.ones((1, config['mel_channels']))
 mel_text_stop_samples = []
 count = 0
 alphabet = set()
+divisible_by = 1
 if config['use_block_attention']:
     block_attention_schedule = np.array(config['block_attention_schedule'])
     divisible_by = np.lcm.reduce(block_attention_schedule[:, 0])
@@ -136,7 +140,7 @@ tokenized_test_list = [(mel, encode_text(text, combiner.tokenizer, divisible_by=
 
 train_set_generator = lambda: (item for item in tokenized_train_list)
 train_dataset = tf.data.Dataset.from_generator(train_set_generator,
-                                               output_types=(tf.float64, tf.int64, tf.int64))
+                                               output_types=(tf.float32, tf.int64, tf.int64))
 train_dataset = train_dataset.shuffle(1000).padded_batch(
     config['batch_size'], padded_shapes=([-1, 80], [-1], [-1]), drop_remainder=True)
 
@@ -171,9 +175,10 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 weights_paths = os.path.join(args.log_dir, f'weights/{current_time}/')
 os.makedirs(weights_paths, exist_ok=False)
 
-kinds = ['text_to_text', 'mel_to_mel', 'text_to_mel', 'mel_to_text']
+kinds = config['transformer_kinds']
+
 for kind in kinds:
-    summary_writers[kind] = tf.summary.create_file_writer(os.path.join(args.log_dir, f'train/{current_time}/{kind}'))
+    summary_writers[kind] = tf.summary.create_file_writer(os.path.join(args.log_dir, f'{current_time}/{kind}'))
     losses[kind] = []
 
 
@@ -188,7 +193,7 @@ def linear_dropout_schedule(step):
 def random_mel_mask(tensor, mask_prob):
     tensor_shape = tf.shape(tensor)
     mask_floats = tf.random.uniform((tensor_shape[0], tensor_shape[1]))
-    mask = tf.cast(mask_floats > mask_prob, tf.float64)
+    mask = tf.cast(mask_floats > mask_prob, tf.float32)
     mask = tf.expand_dims(mask, -1)
     mask = tf.broadcast_to(mask, tensor_shape)
     masked_tensor = tensor * mask
@@ -222,9 +227,9 @@ for epoch in range(config['epochs']):
                                      mask_prob=config['mask_prob'],
                                      reduction_factor=tf.cast(reduction_factor, tf.int32))
         
-        with summary_writers['text_to_text'].as_default():
+        with summary_writers[kinds[0]].as_default():
             tf.summary.scalar('dropout', decoder_prenet_dropout,
-                              step=combiner.transformers['text_to_text'].optimizer.iterations)
+                              step=combiner.transformers[kinds[0]].optimizer.iterations)
         for kind in kinds:
             losses[kind].append(float(output[kind]['loss']))
         
@@ -237,44 +242,46 @@ for epoch in range(config['epochs']):
         
         batch_count += 1
         
-        if batch_count % config['image_freq'] == 0:
-            for kind in kinds:
-                with summary_writers[kind].as_default():
-                    plot_attention(output[kind], step=combiner.transformers[kind].optimizer.iterations,
-                                   info_string='train attention ')
+        if ('mel_to_mel' in kinds) and ('text_to_mel' in kinds):
+            if batch_count % config['image_freq'] == 0:
+                for kind in kinds:
+                    with summary_writers[kind].as_default():
+                        plot_attention(output[kind], step=combiner.transformers[kind].optimizer.iterations,
+                                       info_string='train attention ')
+                    
+                    combiner.save_weights(weights_paths, batch_count)
                 
-                combiner.save_weights(weights_paths, batch_count)
-            
-            pred = {}
-            test_val = {}
-            for i in range(0, 3):
-                mel_target = test_list[i][0]
-                max_pred_len = mel_target.shape[0] + 50
-                test_val['text_to_mel'] = combiner.tokenizer.encode(test_list[i][1])
-                test_val['mel_to_mel'] = mel_target
-                for kind in ['text_to_mel', 'mel_to_mel']:
-                    pred[kind] = combiner.transformers[kind].predict(test_val[kind],
-                                                                     max_length=max_pred_len,
-                                                                     decoder_prenet_dropout=0.5)
-                    with summary_writers[kind].as_default():
-                        plot_attention(pred[kind], step=combiner.transformers[kind].optimizer.iterations,
-                                       info_string='test attention ')
-                        display_mel(pred[kind]['mel'], step=combiner.transformers[kind].optimizer.iterations,
-                                    info_string='test mel {}'.format(i))
-                        display_mel(mel_target, step=combiner.transformers['mel_to_mel'].optimizer.iterations,
-                                    info_string='target mel {}'.format(i))
+                pred = {}
+                test_val = {}
+                for i in range(0, 2):
+                    mel_target = test_list[i][0]
+                    max_pred_len = mel_target.shape[0] + 50
+                    test_val['text_to_mel'] = combiner.tokenizer.encode(test_list[i][1])
+                    test_val['mel_to_mel'] = mel_target
+                    for kind in ['text_to_mel', 'mel_to_mel']:
+                        pred[kind] = combiner.transformers[kind].predict(test_val[kind],
+                                                                         max_length=max_pred_len,
+                                                                         decoder_prenet_dropout=0.5)
+                        with summary_writers[kind].as_default():
+                            plot_attention(pred[kind], step=combiner.transformers[kind].optimizer.iterations,
+                                           info_string='test attention ')
+                            display_mel(pred[kind]['mel'], step=combiner.transformers[kind].optimizer.iterations,
+                                        info_string='test mel {}'.format(i))
+                            display_mel(mel_target, step=combiner.transformers['mel_to_mel'].optimizer.iterations,
+                                        info_string='target mel {}'.format(i))
         
-        if batch_count % config['text_freq'] == 0:
-            pred = {}
-            test_val = {}
-            for i in range(0, 3):
-                test_val['mel_to_text'] = test_list[i][0]
-                test_val['text_to_text'] = combiner.tokenizer.encode(test_list[i][1])
-                decoded_target = combiner.tokenizer.decode(test_val['text_to_text'])
-                for kind in ['mel_to_text', 'text_to_text']:
-                    pred[kind] = combiner.transformers[kind].predict(test_val[kind])
-                    pred[kind] = combiner.tokenizer.decode(pred[kind]['output'])
-                    with summary_writers[kind].as_default():
-                        tf.summary.text(f'{kind} from validation', f'(pred) {pred[kind]}\n(target) {decoded_target}',
-                                        step=combiner.transformers[kind].optimizer.iterations)
-        #
+        if ('mel_to_text' in kinds) and ('text_to_text' in kinds):
+            if batch_count % config['text_freq'] == 0:
+                pred = {}
+                test_val = {}
+                for i in range(0, 2):
+                    test_val['mel_to_text'] = test_list[i][0]
+                    test_val['text_to_text'] = combiner.tokenizer.encode(test_list[i][1])
+                    decoded_target = combiner.tokenizer.decode(test_val['text_to_text'])
+                    for kind in ['mel_to_text', 'text_to_text']:
+                        pred[kind] = combiner.transformers[kind].predict(test_val[kind])
+                        pred[kind] = combiner.tokenizer.decode(pred[kind]['output'])
+                        with summary_writers[kind].as_default():
+                            tf.summary.text(f'{kind} from validation',
+                                            f'(pred) {pred[kind]}\n(target) {decoded_target}',
+                                            step=combiner.transformers[kind].optimizer.iterations)

@@ -36,10 +36,13 @@ class Combiner:  # (tf.keras.Model):
                  mel_start_vec_value: int,
                  mel_end_vec_value: int,
                  tokenizer_alphabet: list = None,
-                 debug=False):
+                 debug: bool=False,
+                 transformer_kinds=None):
         
         # super(Combiner, self).__init__()
-        
+
+        if transformer_kinds is None:
+            transformer_kinds = ['text_to_text', 'mel_to_mel', 'text_to_mel', 'mel_to_text']
         if tokenizer_type == 'char':
             if tokenizer_alphabet is None:
                 tokenizer_alphabet = string.printable
@@ -80,7 +83,7 @@ class Combiner:  # (tf.keras.Model):
                                dff=text_decoder_feed_forward_dimension,
                                maximum_position_encoding=max_position_encoding,
                                rate=dropout_rate)
-        self.transformer_kinds = ['text_to_text', 'mel_to_mel', 'text_to_mel', 'mel_to_text']
+        self.transformer_kinds = transformer_kinds
         self.transformers = {'text_to_mel': TextMelTransformer(encoder_prenet=text_encoder_prenet,
                                                                decoder_prenet=speech_decoder_prenet,
                                                                decoder_postnet=speech_decoder_postnet,
@@ -120,7 +123,7 @@ class Combiner:  # (tf.keras.Model):
     def random_mel_mask(tensor, mask_prob):
         tensor_shape = tf.shape(tensor)
         mask_floats = tf.random.uniform((tensor_shape[0], tensor_shape[1]))
-        mask = tf.cast(mask_floats > mask_prob, tf.float64)
+        mask = tf.cast(mask_floats > mask_prob, tf.float32)
         mask = tf.expand_dims(mask, -1)
         mask = tf.broadcast_to(mask, tensor_shape)
         masked_tensor = tensor * mask
@@ -137,16 +140,19 @@ class Combiner:  # (tf.keras.Model):
     def train_step(self, text, mel, stop, speech_decoder_prenet_dropout, mask_prob=0., reduction_factor=1):
         masked_text = self.random_text_mask(text, mask_prob)
         masked_mel = self.random_mel_mask(mel, mask_prob)
-        output = {
-            'text_to_text': self.transformers['text_to_text'].train_step(masked_text, text),
-            'mel_to_mel': self.transformers['mel_to_mel'].train_step(masked_mel, mel, stop,
+        output = {}
+        if 'mel_to_mel' in self.transformer_kinds:
+            output.update({'mel_to_mel': self.transformers['mel_to_mel'].train_step(masked_mel, mel, stop,
                                                                      decoder_prenet_dropout=speech_decoder_prenet_dropout,
-                                                                     reduction_factor=reduction_factor),
-            'text_to_mel': self.transformers['text_to_mel'].train_step(text, mel, stop,
+                                                                     reduction_factor=reduction_factor)})
+        if 'text_to_mel' in self.transformer_kinds:
+            output.update({'text_to_mel': self.transformers['text_to_mel'].train_step(text, mel, stop,
                                                                        decoder_prenet_dropout=speech_decoder_prenet_dropout,
-                                                                       reduction_factor=reduction_factor),
-            'mel_to_text': self.transformers['mel_to_text'].train_step(mel, text)
-        }
+                                                                       reduction_factor=reduction_factor)})
+        if 'mel_to_text' in self.transformer_kinds:
+            output.update({'mel_to_text': self.transformers['mel_to_text'].train_step(mel, text)})
+        if 'text_to_text' in self.transformer_kinds:
+            output.update({'text_to_text': self.transformers['text_to_text'].train_step(masked_text, text)})
         
         return output
     
