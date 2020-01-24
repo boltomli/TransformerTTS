@@ -68,6 +68,7 @@ def reduction_factor_schedule(step, reduction_factors, steps):
     else:
         return 1
 
+
 start_vec = np.ones((1, config['mel_channels'])) * -3
 end_vec = np.ones((1, config['mel_channels']))
 mel_text_stop_samples = []
@@ -242,14 +243,16 @@ for epoch in range(config['epochs']):
         
         batch_count += 1
         
+        if batch_count % config['plot_attention_freq']:
+            for kind in kinds:
+                with summary_writers[kind].as_default():
+                    plot_attention(output[kind], step=combiner.transformers[kind].optimizer.iterations,
+                                   info_string='train attention ')
+        if batch_count % config['weights_save_freq'] == 0:
+            combiner.save_weights(weights_paths, batch_count)
+        
         if ('mel_to_mel' in kinds) and ('text_to_mel' in kinds):
             if batch_count % config['image_freq'] == 0:
-                for kind in kinds:
-                    with summary_writers[kind].as_default():
-                        plot_attention(output[kind], step=combiner.transformers[kind].optimizer.iterations,
-                                       info_string='train attention ')
-                    
-                    combiner.save_weights(weights_paths, batch_count)
                 
                 pred = {}
                 test_val = {}
