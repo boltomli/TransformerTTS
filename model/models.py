@@ -1,7 +1,7 @@
 import tensorflow as tf
 
-from model.transformer_utils import weighted_sum_losses, create_text_padding_mask, create_mel_padding_mask, \
-    create_look_ahead_mask
+from model.transformer_utils import create_text_padding_mask, create_mel_padding_mask, create_look_ahead_mask
+from utils.losses import weighted_sum_losses
 
 
 class Transformer(tf.keras.Model):
@@ -62,8 +62,8 @@ class TextTransformer(Transformer):
         self._check_tokenizer()
         if not debug:
             self.train_step = tf.function(input_signature=[
-                tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-                tf.TensorSpec(shape=(None, None), dtype=tf.int64)]
+                tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                tf.TensorSpec(shape=(None, None), dtype=tf.int32)]
             )(self._train_step)
         else:
             self.train_step = self._train_step
@@ -72,7 +72,9 @@ class TextTransformer(Transformer):
         for attribute in ['start_token_index', 'end_token_index', 'vocab_size']:
             assert hasattr(self.tokenizer, attribute), f'Tokenizer is missing {attribute}.'
     
-    def predict(self, inputs, max_length=40):
+    def predict(self, inputs, max_length=40, encode=False):
+        if encode:
+            inputs = self.tokenizer.encode(inputs)
         encoder_input = tf.expand_dims(inputs, 0)
         decoder_input = [self.tokenizer.start_token_index]
         output = tf.expand_dims(decoder_input, 0)
@@ -166,19 +168,13 @@ class MelTransformer(Transformer):
                 input_signature=[
                     tf.TensorSpec(shape=(None, None, decoder_postnet.mel_channels), dtype=tf.float32),
                     tf.TensorSpec(shape=(None, None, decoder_postnet.mel_channels), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+                    tf.TensorSpec(shape=(None, None), dtype=tf.int32),
                     tf.TensorSpec(shape=(None), dtype=tf.float32),
                     tf.TensorSpec(shape=(None), dtype=tf.int32)
                 ]
             )(self._train_step)
         else:
             self.train_step = self._train_step
-    
-    def preprocess_mel(self, mel, clip_min=1e-5, clip_max=float('inf')):
-        norm_mel = tf.cast(mel, tf.float32)
-        norm_mel = tf.math.log(tf.clip_by_value(norm_mel, clip_value_min=clip_min, clip_value_max=clip_max))
-        norm_mel = tf.concat([self.start_vec, norm_mel, self.end_vec], 0)
-        return norm_mel
     
     def predict(self, inputs, max_length=50, decoder_prenet_dropout=0.5):
         inputs = tf.expand_dims(inputs, 0)
@@ -209,12 +205,9 @@ class MelTransformer(Transformer):
         return enc_padding_mask, combined_mask, dec_padding_mask
     
     def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout, reduction_factor):
-        # tar_inp = tar[:, :, :]
         tar_inp = tar
-        # tar_real = tar[:, 1:, :]
         tar_real = tf.concat([tar[:, 1:, :], tf.cast(tf.zeros((tf.shape(tar)[0], 1, tf.shape(tar)[-1])), tf.float32)],
                              axis=-2)  # shift target
-        # tar_stop_prob = stop_prob[:, 1:]
         tar_stop_prob = stop_prob
         enc_padding_mask, combined_mask, dec_padding_mask = self.create_masks(inp, tar_inp)
         with tf.GradientTape() as tape:
@@ -235,6 +228,7 @@ class MelTransformer(Transformer):
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         model_out.update({'loss': loss})
+        model_out.update({'losses': {'output': loss_vals[0], 'stop_prob': loss_vals[1], 'mel_linear': loss_vals[2]}})
         return model_out
     
     def call(self,
@@ -288,7 +282,7 @@ class MelTextTransformer(Transformer):
             self.train_step = tf.function(
                 input_signature=[
                     tf.TensorSpec(shape=(None, None, mel_channels), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+                    tf.TensorSpec(shape=(None, None), dtype=tf.int32),
                 ]
             )(self._train_step)
         else:
@@ -297,12 +291,6 @@ class MelTextTransformer(Transformer):
     def _check_tokenizer(self):
         for attribute in ['start_token_index', 'end_token_index', 'vocab_size']:
             assert hasattr(self.tokenizer, attribute), f'Tokenizer is missing {attribute}.'
-    
-    def preprocess_mel(self, mel, clip_min=1e-5, clip_max=float('inf')):
-        norm_mel = tf.cast(mel, tf.float32)
-        norm_mel = tf.math.log(tf.clip_by_value(norm_mel, clip_value_min=clip_min, clip_value_max=clip_max))
-        norm_mel = tf.concat([self.start_vec, norm_mel, self.end_vec], 0)
-        return norm_mel
     
     def predict(self, inputs, max_length=100):
         encoder_input = tf.expand_dims(inputs, 0)
@@ -400,9 +388,9 @@ class TextMelTransformer(Transformer):
         if not debug:
             self.train_step = tf.function(
                 input_signature=[
-                    tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+                    tf.TensorSpec(shape=(None, None), dtype=tf.int32),
                     tf.TensorSpec(shape=(None, None, decoder_postnet.mel_channels), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+                    tf.TensorSpec(shape=(None, None), dtype=tf.int32),
                     tf.TensorSpec(shape=(None), dtype=tf.float32),
                     tf.TensorSpec(shape=(None), dtype=tf.int32)
                 ]
@@ -414,13 +402,9 @@ class TextMelTransformer(Transformer):
         for attribute in ['start_token_index', 'end_token_index', 'vocab_size']:
             assert hasattr(self.tokenizer, attribute), f'Tokenizer is missing {attribute}.'
     
-    def preprocess_mel(self, mel, clip_min=1e-5, clip_max=float('inf')):
-        norm_mel = tf.cast(mel, tf.float32)
-        norm_mel = tf.math.log(tf.clip_by_value(norm_mel, clip_value_min=clip_min, clip_value_max=clip_max))
-        norm_mel = tf.concat([self.start_vec, norm_mel, self.end_vec], 0)
-        return norm_mel
-    
-    def predict(self, inp, max_length=50, decoder_prenet_dropout=0.5):
+    def predict(self, inp, max_length=50, decoder_prenet_dropout=0.5, encode=False):
+        if encode:
+            inp = self.tokenizer.encode(inp)
         inp = tf.expand_dims(inp, 0)
         output = tf.expand_dims(self.start_vec, 0)
         out_dict = {}
@@ -437,6 +421,7 @@ class TextMelTransformer(Transformer):
             stop_pred = model_out['stop_prob'][:, -1]
             out_dict = {'mel': output[0, 1:, :], 'attention_weights': model_out['attention_weights']}
             if int(tf.argmax(stop_pred, axis=-1)) == self.stop_prob_index:
+                print('Stopping')
                 break
         return out_dict
     
@@ -450,12 +435,9 @@ class TextMelTransformer(Transformer):
     
     def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout, reduction_factor):
         tar_inp = tar
-        # tar_real = tar[:, 1:]
         # shift target
         tar_real = tf.concat([tar[:, 1:], tf.cast(tf.zeros((tf.shape(tar)[0], 1, tf.shape(tar)[-1])), tf.float32)], axis=-2)
-        # tar_inp = tar[:, :-1]
         tar_stop_prob = stop_prob
-        # tar_stop_prob = stop_prob[:, 1:]
         enc_padding_mask, combined_mask, dec_padding_mask = self.create_masks(inp, tar_inp)
         with tf.GradientTape() as tape:
             model_out = self.__call__(inputs=inp,
@@ -475,6 +457,7 @@ class TextMelTransformer(Transformer):
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         model_out.update({'loss': loss})
+        model_out.update({'losses': {'output': loss_vals[0], 'stop_prob': loss_vals[1], 'mel_linear': loss_vals[2]}})
         return model_out
     
     def call(self,
