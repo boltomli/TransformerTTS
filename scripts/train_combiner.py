@@ -46,6 +46,8 @@ def create_dirs(args, config):
     return weights_paths, log_dir, base_dir
 
 
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--datadir', dest='datadir', type=str)
 parser.add_argument('--logdir', dest='log_dir', default='/tmp/summaries', type=str)
@@ -55,6 +57,19 @@ yaml = ruamel.yaml.YAML()
 config = yaml.load(open(args.config, 'r'))
 config_name = os.path.splitext(os.path.basename(args.config))[0]
 weights_paths, log_dir, base_dir = create_dirs(args, config)
+
+
+def reduction_factor_schedule(step, reduction_factors, steps):
+    if len(reduction_factors[steps > step]) > 0:
+        return reduction_factors[steps > step][0]
+    else:
+        return 1
+
+
+divisible_by = 1
+if config['use_block_attention']:
+    block_attention_schedule = np.array(config['block_attention_schedule'])
+    divisible_by = np.lcm.reduce(block_attention_schedule[:, 0])
 
 print('creating model')
 combiner = Combiner(config=config)
@@ -76,8 +91,8 @@ preprocessor = Preprocessor(mel_channels=config['mel_channels'],
                             end_vec_val=config['mel_end_vec_value'],
                             tokenizer=combiner.tokenizer)
 yaml.dump(config, open(os.path.join(base_dir, os.path.basename(args.config)), 'w'))
-train_gen = lambda: (preprocessor(s) for s in train_samples)
-test_list = [preprocessor(s) for s in test_samples]
+train_gen = lambda: (preprocessor(s, divisible_by=divisible_by) for s in train_samples)
+test_list = [preprocessor(s, divisible_by=divisible_by) for s in test_samples]
 train_dataset = tf.data.Dataset.from_generator(train_gen, output_types=(tf.float32, tf.int32, tf.int32))
 train_dataset = train_dataset.shuffle(1000).padded_batch(config['batch_size'],
                                                          padded_shapes=([-1, 80], [-1], [-1]),
@@ -106,20 +121,24 @@ for kind in transformer_kinds:
         print(f'Initializing {kind} from scratch.')
 
 print('starting training')
+reduction_factor = 1
 
 while combiner.step < config['max_steps']:
     for (batch, (mel, text, stop)) in enumerate(train_dataset):
         decoder_prenet_dropout = dropout_schedule(combiner.step)
         learning_rate = learning_rate_schedule(combiner.step)
         combiner.set_learning_rates(learning_rate)
-
+        if config['use_block_attention']:
+            reduction_factor = reduction_factor_schedule(combiner.step, block_attention_schedule[:, 0],
+                                                         block_attention_schedule[:, 1])
         output = combiner.train_step(text=text,
                                      mel=mel,
                                      stop=stop,
                                      pre_dropout=decoder_prenet_dropout,
-                                     mask_prob=config['mask_prob'])
+                                     mask_prob=config['mask_prob'],
+                                     reduction_factor=tf.cast(reduction_factor, tf.int32))
         print(f'\nbatch {combiner.step}')
-
+        
         summary_manager.write_loss(output, combiner.step)
         summary_manager.write_meta(name='dropout',
                                    value=decoder_prenet_dropout,
@@ -127,22 +146,22 @@ while combiner.step < config['max_steps']:
         # summary_manager.write_meta(name='learning_rate',
         #                            value=config['learning_rate'],
         #                            step=combiner.step)
-
+        
         for kind in transformer_kinds:
             losses[kind].append(float(output[kind]['loss']))
             summary_manager.write_meta_for_kind(name='learning_rate',
                                                 value=getattr(combiner, kind).optimizer.lr,
                                                 step=combiner.step,
                                                 kind=kind)
-
+            
             if (combiner.step + 1) % config['plot_attention_freq'] == 0:
                 summary_manager.write_attention(output, combiner.step)
             print(f'{kind} mean loss: {sum(losses[kind]) / len(losses[kind])}')
-
+            
             if (combiner.step + 1) % config['weights_save_freq'] == 0:
                 save_path = managers[kind].save()
                 print(f'Saved checkpoint for step {combiner.step}: {save_path}')
-
+        
         if (combiner.step + 1) % config['text_freq'] == 0:
             for i in range(2):
                 mel, text_seq, stop = test_list[i]
@@ -153,7 +172,7 @@ while combiner.step < config['max_steps']:
                                         max_len_text=len(text_seq) + 5,
                                         max_len_mel=False)
                 summary_manager.write_text(text=text, pred=pred, step=combiner.step)
-
+        
         if (combiner.step + 1) % config['image_freq'] == 0:
             for i in range(2):
                 mel, text_seq, stop = test_list[i]
@@ -164,7 +183,7 @@ while combiner.step < config['max_steps']:
                                         max_len_mel=mel.shape[0] + 50,
                                         max_len_text=False)
                 summary_manager.write_images(mel=mel, pred=pred, step=combiner.step, id=i)
-
+        
         if combiner.step >= config['max_steps']:
             print(f'Stopping training at step {combiner.step}.')
             break

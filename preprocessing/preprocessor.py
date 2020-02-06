@@ -18,18 +18,24 @@ class Preprocessor:
         self.lowercase = lowercase
         self.clip_val = clip_val
     
-    def __call__(self, sample):
+    def __call__(self, sample, divisible_by=1):
         text, mel_path = sample[0], sample[1]
         mel = np.load(mel_path)
-        return self.encode(text, mel)
+        return self.encode(text, mel, divisible_by=divisible_by)
     
-    def encode(self, text, mel):
+    def encode(self, text, mel, divisible_by=1):
         if self.lowercase:
             text = text.lower()
         encoded_text = self.tokenizer.encode(text)
-        encoded_text = [self.tokenizer.start_token_index] + encoded_text + [self.tokenizer.end_token_index]
+        extra_end = (divisible_by - ((len(encoded_text) + 2) % divisible_by)) % divisible_by
+        encoded_text = [self.tokenizer.start_token_index] + encoded_text + [self.tokenizer.end_token_index] + [
+            0] * extra_end
         norm_mel = np.log(mel.clip(1e-5))
-        norm_mel = np.concatenate([self.start_vec, norm_mel, self.end_vec], axis=0)
+        norm_mel_len = norm_mel.shape[-2]
+        extra_end = (divisible_by - ((norm_mel.shape[-2] + 2) % divisible_by)) % divisible_by
+        divisibility_pads = np.zeros(self.end_vec.shape)
+        norm_mel = np.concatenate([self.start_vec, norm_mel, self.end_vec, np.tile(divisibility_pads, (extra_end, 1))],
+                                  axis=0)
         stop_probs = np.ones((norm_mel.shape[0]))
-        stop_probs[-1] = 2
+        stop_probs[norm_mel_len:] = 2
         return norm_mel, encoded_text, stop_probs
