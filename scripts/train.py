@@ -130,7 +130,11 @@ else:
 
 print('\nTRAINING')
 losses = []
-_ = train_dataset.next_batch()
+# this is needed to create custom layers attributes
+###
+_, text_seq, _ = test_list[0]
+_ = combiner.predict(text_seq, pre_dropout=0.5, max_len_mel=2, verbose=False)
+###
 t = trange(combiner.step, config['max_steps'], leave=True)
 for i in t:
     t.set_description(f'step {combiner.step}')
@@ -157,6 +161,7 @@ for i in t:
     summary_manager.display_loss(output, tag='Train')
     summary_manager.display_scalar(tag='Meta/dropout', scalar_value=decoder_prenet_dropout)
     summary_manager.display_scalar(tag='Meta/learning_rate', scalar_value=combiner.text_mel.optimizer.lr)
+    summary_manager.display_scalar(tag='Meta/reduction_factor', scalar_value=combiner.text_mel.r)
     if (combiner.step + 1) % config['plot_attention_freq'] == 0:
         summary_manager.display_attention_heads(output, tag='Train')
     

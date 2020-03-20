@@ -3,6 +3,7 @@ import sys
 import tensorflow as tf
 
 from model.transformer_utils import create_text_padding_mask, create_mel_padding_mask, create_look_ahead_mask
+from model.layers import ShapeShiftLinear
 from utils.losses import weighted_sum_losses
 
 
@@ -71,7 +72,7 @@ class TextMelTransformer(Transformer):
         self.max_r = 10
         self.r = r
         self.mel_channels = 80
-        self.final_proj_mel = tf.keras.layers.Dense(self.mel_channels * self.max_r)
+        self.final_proj_mel = ShapeShiftLinear(self.mel_channels * self.max_r)
         self.training_input_signature = [
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
             tf.TensorSpec(shape=(None, None, decoder_postnet.mel_channels), dtype=tf.float32),
@@ -112,12 +113,13 @@ class TextMelTransformer(Transformer):
                                                      training=training,
                                                      look_ahead_mask=look_ahead_mask,
                                                      padding_mask=dec_padding_mask)
-        out_proj = self.final_proj_mel(dec_output)[:, :, :self.r * self.mel_channels]
+        out_proj = self.final_proj_mel(dec_output)
         b = int(tf.shape(out_proj)[0])
         t = int(tf.shape(out_proj)[1])
         mel = tf.reshape(out_proj, (b, t * self.r, self.mel_channels))
         model_output = self.decoder_postnet(inputs=mel, training=training)
-        model_output.update({'attention_weights': attention_weights, 'decoder_output': dec_output})
+        model_output.update(
+            {'attention_weights': attention_weights, 'decoder_output': dec_output, 'out_proj': out_proj})
         return model_output
     
     def predict(self, inp, max_length=50, decoder_prenet_dropout=0.5, encode=False, verbose=True):
@@ -156,6 +158,7 @@ class TextMelTransformer(Transformer):
         if self.r == r:
             return
         self.r = r
+        self.final_proj_mel.change_shape(self.mel_channels * self.r)
         self.forward = self.__apply_signature(self._forward, self.forward_input_signature)
         self.train_step = self.__apply_signature(self._train_step, self.training_input_signature)
         self.val_step = self.__apply_signature(self._val_step, self.training_input_signature)
@@ -198,6 +201,7 @@ class TextMelTransformer(Transformer):
                                                   self.loss_weights)
         model_out.update({'loss': loss})
         model_out.update({'losses': {'output': loss_vals[0], 'stop_prob': loss_vals[1], 'mel_linear': loss_vals[2]}})
+        model_out.update({'reduced_target': tar_mel})
         return model_out, tape
     
     def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout):

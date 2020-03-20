@@ -213,7 +213,7 @@ class SpeechPostnet(tf.keras.layers.Layer):
 
 
 class SpeechConvLayers(tf.keras.layers.Layer):
-
+    
     def __init__(self, out_size, n_filters=256, n_layers=5, kernel_size=5, dropout_prob=0.5):
         super(SpeechConvLayers, self).__init__()
         self.convolutions = [tf.keras.layers.Conv1D(filters=n_filters,
@@ -236,3 +236,39 @@ class SpeechConvLayers(tf.keras.layers.Layer):
         x = self.last_conv(x)
         x = self.batch_norms[-1](x, training=training)
         return x
+
+
+class ShapeShiftLinear(tf.keras.layers.Layer):
+    def __init__(self, units=32, **kwargs):
+        super(ShapeShiftLinear, self).__init__(**kwargs)
+        self.units = units
+    
+    def build(self, input_shape):
+        self.w = self.add_weight(shape=(input_shape[-1], self.units),
+                                 initializer='random_normal',
+                                 trainable=True,
+                                 name='ShapeShiftWeights')
+        self.b = self.add_weight(shape=(self.units,),
+                                 initializer='random_normal',
+                                 trainable=True,
+                                 name='ShapeShiftBias')
+    
+    def change_shape(self, new_size):
+        self.w = self.w[:, :new_size]
+        self.b = self.b[:new_size]
+    
+    def call(self, inputs):
+        return tf.matmul(inputs, self.w) + self.b
+    
+    def get_config(self):
+        config = super(ShapeShiftLinear, self).get_config()
+        config.update({'units': self.units,
+                       'w': self.w,
+                       'b': self.b})
+        return config
+    
+    # def get_config(self):
+    #     return {'units': self.units,
+    #             'w': self.w,
+    #             'b': self.b,
+    #             'name': self.name}

@@ -43,11 +43,11 @@ class TestCombiner(unittest.TestCase):
                                                    pre_dropout=0.5)
                 train_outputs.append(train_output)
 
-        self.assertAlmostEqual(2.5172035694122314, float(train_outputs[-1]['loss']), places=6)
+        self.assertAlmostEqual(2.510066032409668, float(train_outputs[-1]['loss']), places=6)
         mel_input, text_input = train_samples[0][0], train_samples[0][1]
         pred_text_mel = combiner.text_mel.predict(text_input, max_length=10, verbose=False)
 
-        self.assertAlmostEqual(-1773.509765625, float(tf.reduce_sum(pred_text_mel['mel'])))
+        self.assertAlmostEqual(-1489.196533203125, float(tf.reduce_sum(pred_text_mel['mel'])))
 
         val_outputs = []
         for (batch, (mel, text, stop)) in enumerate(train_dataset):
@@ -57,4 +57,4 @@ class TestCombiner(unittest.TestCase):
                                            pre_dropout=0.5)
             val_outputs.append(val_output)
 
-        self.assertAlmostEqual(2.4509973526000977, float(val_outputs[-1]['loss']), places=6)
+        self.assertAlmostEqual(2.5442395210266113, float(val_outputs[-1]['loss']), places=6)
