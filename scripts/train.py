@@ -141,8 +141,8 @@ for i in t:
     mel, text, stop = train_dataset.next_batch()
     decoder_prenet_dropout = piecewise_linear_schedule(combiner.step, config['dropout_schedule'])
     learning_rate = piecewise_linear_schedule(combiner.step, config['learning_rate_schedule'])
-    reduction_factor = reduction_schedule(combiner.step, config['reduction_schedule'])
-    t.display(f'red fac {reduction_factor}', pos=10)
+    reduction_factor = reduction_schedule(combiner.step, config['reduction_factor_schedule'])
+    t.display(f'reduction factor {reduction_factor}', pos=10)
     combiner.text_mel.set_r(reduction_factor)
     combiner.set_learning_rates(learning_rate)
     

@@ -55,7 +55,7 @@ class TextMelTransformer(Transformer):
                  decoder,
                  decoder_postnet,
                  tokenizer,
-                 r=10,
+                 max_r=10,
                  start_vec_value=-3,
                  end_vec_value=1,
                  debug=False):
@@ -69,8 +69,8 @@ class TextMelTransformer(Transformer):
         self.tokenizer = tokenizer
         self._check_tokenizer()
         self.stop_prob_index = 2
-        self.max_r = 10
-        self.r = r
+        self.max_r = max_r
+        self.r = max_r
         self.mel_channels = 80
         self.final_proj_mel = ShapeShiftLinear(self.mel_channels * self.max_r)
         self.training_input_signature = [

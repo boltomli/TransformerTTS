@@ -44,4 +44,3 @@ def reduction_schedule(step, schedule):
         else:
             break
     return int(r)
-\
