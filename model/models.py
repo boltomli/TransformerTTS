@@ -4,6 +4,7 @@ import tensorflow as tf
 
 from model.transformer_utils import create_text_padding_mask, create_mel_padding_mask, create_look_ahead_mask
 from utils.losses import weighted_sum_losses
+from model.layers import SelfAttentionDenseBlock, SelfAttentionConvBlock, DurationPredictor, Expand
 
 
 class Transformer(tf.keras.Model):
@@ -215,3 +216,27 @@ class TextMelTransformer(Transformer):
     def _check_tokenizer(self):
         for attribute in ['start_token_index', 'end_token_index', 'vocab_size']:
             assert hasattr(self.tokenizer, attribute), f'Tokenizer is missing {attribute}.'
+
+
+class ForwardTransformer(tf.keras.models.Model):
+    def __init__(self, model_dim: int, dropout_rate: float, head_n: int):
+        super(ForwardTransformer, self).__init__()
+        self.sadb = SelfAttentionDenseBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
+        self.sacb = SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
+        self.dur_pred = DurationPredictor(model_dim=model_dim, dropout_rate=dropout_rate)
+        self.expand = Expand()
+        self.sacb2 = SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
+        self.sacb3 = SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
+        self.sacb4 = SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
+        self.out = tf.keras.layers.Dense(model_dim)
+    
+    def call(self, x, padding_mask, training=False):
+        x = self.sadb(x, training=training, mask=padding_mask)
+        x = self.sacb(x, training=training, mask=padding_mask)
+        durations = self.dur_pred(x)
+        mels = self.expand(x, durations)
+        expanded_mask = create_mel_padding_mask(mels)
+        mels = self.sacb2(mels, training=training, mask=expanded_mask)
+        mels = self.sacb3(mels, training=training, mask=expanded_mask)
+        mels = self.sacb4(mels, training=training, mask=expanded_mask)
+        return mels, durations, expanded_mask
