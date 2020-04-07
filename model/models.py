@@ -219,24 +219,32 @@ class TextMelTransformer(Transformer):
 
 
 class ForwardTransformer(tf.keras.models.Model):
-    def __init__(self, model_dim: int, dropout_rate: float, head_n: int):
-        super(ForwardTransformer, self).__init__()
-        self.sadb = SelfAttentionDenseBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
-        self.sacb = SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
-        self.dur_pred = DurationPredictor(model_dim=model_dim, dropout_rate=dropout_rate)
-        self.expand = Expand()
-        self.sacb2 = SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
-        self.sacb3 = SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
-        self.sacb4 = SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n)
-        self.out = tf.keras.layers.Dense(model_dim)
+    def __init__(self, model_dim: int, dropout_rate: float, head_n: int, encoder_conv_blocks: int,
+                 decoder_blocks: int, encoder_dense_blocks: int = 1, mel_channels: int = 80, **kwargs):
+        super(ForwardTransformer, self).__init__(**kwargs)
+        self.encoder_SADB = [
+            SelfAttentionDenseBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n, name=f'enc_SADB_{i}')
+            for i in range(encoder_dense_blocks)]
+        self.encoder_SACB = [
+            SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n, name=f'enc_SACB_{i}')
+            for i in range(encoder_conv_blocks)]
+        self.decoder_SACB = [
+            SelfAttentionConvBlock(model_dim=model_dim, dropout_rate=dropout_rate, head_n=head_n, name=f'dec_SACB_{i}')
+            for i in range(decoder_blocks)]
+        self.dur_pred = DurationPredictor(model_dim=model_dim, dropout_rate=dropout_rate, name='dur_pred')
+        self.expand = Expand(name='expand')
+        self.out = tf.keras.layers.Dense(mel_channels, name='mel_out')
     
-    def call(self, x, padding_mask, training=False):
-        x = self.sadb(x, training=training, mask=padding_mask)
-        x = self.sacb(x, training=training, mask=padding_mask)
+    def call(self, x, training=False):
+        padding_mask = create_mel_padding_mask(x)
+        for block in self.encoder_SADB:
+            x = block(x, training=training, mask=padding_mask)
+        for block in self.encoder_SACB:
+            x = block(x, training=training, mask=padding_mask)
         durations = self.dur_pred(x)
         mels = self.expand(x, durations)
         expanded_mask = create_mel_padding_mask(mels)
-        mels = self.sacb2(mels, training=training, mask=expanded_mask)
-        mels = self.sacb3(mels, training=training, mask=expanded_mask)
-        mels = self.sacb4(mels, training=training, mask=expanded_mask)
+        for block in self.decoder_SACB:
+            mels = block(mels, training=training, mask=expanded_mask)
+        mels = self.out(mels)
         return mels, durations, expanded_mask

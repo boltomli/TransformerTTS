@@ -244,8 +244,9 @@ class SelfAttentionResNorm(tf.keras.layers.Layer):
     def __init__(self,
                  model_dim: int,
                  head_n: int,
-                 dropout_rate: float):
-        super(SelfAttentionResNorm, self).__init__()
+                 dropout_rate: float,
+                 **kwargs):
+        super(SelfAttentionResNorm, self).__init__(**kwargs)
         self.mha = MultiHeadAttention(model_dim, head_n)
         self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
@@ -265,8 +266,9 @@ class Conv1DResNorm(tf.keras.layers.Layer):
                  dropout_rate: float,
                  kernel_size: int = 5,
                  conv_padding: str = 'causal',
-                 activation: str = 'relu'):
-        super(Conv1DResNorm, self).__init__()
+                 activation: str = 'relu',
+                 **kwargs):
+        super(Conv1DResNorm, self).__init__(**kwargs)
         self.conv = tf.keras.layers.Conv1D(filters=model_dim,
                                            kernel_size=kernel_size,
                                            padding=conv_padding,
@@ -287,8 +289,9 @@ class DenseResNorm(tf.keras.layers.Layer):
     def __init__(self,
                  model_dim: int,
                  dropout_rate: float,
-                 activation: str = 'relu'):
-        super(DenseResNorm, self).__init__()
+                 activation: str = 'relu',
+                 **kwargs):
+        super(DenseResNorm, self).__init__(**kwargs)
         self.dense = tf.keras.layers.Dense(model_dim, activation=activation)
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
         self.layer_norm = tf.keras.layers.LayerNormalization()
@@ -311,9 +314,10 @@ class SelfAttentionConvBlock(tf.keras.layers.Layer):
                  conv_block_n: int = 1,
                  attn_block_n: 1 = 1,
                  conv_padding: str = 'causal',
-                 conv_activation: str = 'relu'):
+                 conv_activation: str = 'relu',
+                 **kwargs):
         
-        super(SelfAttentionConvBlock, self).__init__()
+        super(SelfAttentionConvBlock, self).__init__(**kwargs)
         self.attn_blocks = [SelfAttentionResNorm(model_dim=model_dim, head_n=head_n, dropout_rate=dropout_rate) for _ in
                             range(attn_block_n)]
         self.conv_blocks = [Conv1DResNorm(model_dim=model_dim, dropout_rate=dropout_rate, kernel_size=kernel_size,
@@ -337,8 +341,9 @@ class DurationPredictor(tf.keras.layers.Layer):
                  conv_activation: str = 'relu',
                  conv_block_n: int = 2,
                  dense_activation: str = 'relu',
-                 dense_scalar: int = 5):
-        super(DurationPredictor, self).__init__()
+                 dense_scalar: int = 5,
+                 **kwargs):
+        super(DurationPredictor, self).__init__(**kwargs)
         
         self.conv_blocks = [Conv1DResNorm(model_dim=model_dim, dropout_rate=dropout_rate, kernel_size=kernel_size,
                                           conv_padding=conv_padding, activation=conv_activation) for _ in
@@ -360,8 +365,9 @@ class SelfAttentionDenseBlock(tf.keras.layers.Layer):
                  head_n: int,
                  dense_block_n: int = 1,
                  attn_block_n: 1 = 1,
-                 dense_activation: str = 'relu'):
-        super(SelfAttentionDenseBlock, self).__init__()
+                 dense_activation: str = 'relu',
+                 **kwargs):
+        super(SelfAttentionDenseBlock, self).__init__(**kwargs)
         
         self.attn_blocks = [SelfAttentionResNorm(model_dim=model_dim, head_n=head_n, dropout_rate=dropout_rate)
                             for _ in range(attn_block_n)]
@@ -394,8 +400,8 @@ class Expand(tf.keras.layers.Layer):
                            [0.5347662  0.15213418]]], shape=(1, 6, 2), dtype=float32)
     """
     
-    def __init__(self):
-        super(Expand, self).__init__()
+    def __init__(self, **kwargs):
+        super(Expand, self).__init__(**kwargs)
         
     @staticmethod
     def __get_tensor_slices(dimensions, max_dim):
