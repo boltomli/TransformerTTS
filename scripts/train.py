@@ -64,11 +64,11 @@ def validate(model,
     summary_manager.display_loss(model_out, tag='Validation', plot_all=True)
     summary_manager.display_attention_heads(model_out, tag='Validation')
     summary_manager.display_attention_heads(output, tag='Train')
-    summary_manager.display_mel(mel=model_out['mel_linear'][0], tag=f'Validation/linear_mel_out')
-    summary_manager.display_mel(mel=model_out['final_output'][0], tag=f'Validation/predicted_mel')
+    summary_manager.display_mel(mel=model_out['mel_linear'][0], tag=f'Validation/linear_mel_out', config=config_loader)
+    summary_manager.display_mel(mel=model_out['final_output'][0], tag=f'Validation/predicted_mel', config=config_loader)
     residual = abs(model_out['mel_linear'] - model_out['final_output'])
-    summary_manager.display_mel(mel=residual[0], tag=f'Validation/conv-linear_residual')
-    summary_manager.display_mel(mel=val_mel[0], tag=f'Validation/target_mel')
+    summary_manager.display_mel(mel=residual[0], tag=f'Validation/conv-linear_residual', config=config_loader)
+    summary_manager.display_mel(mel=val_mel[0], tag=f'Validation/target_mel', config=config_loader)
     return val_loss['loss']
 
 
