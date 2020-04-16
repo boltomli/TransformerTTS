@@ -39,7 +39,9 @@ peak_norm: False  # if False, only normalizes to peak if peak>1
 dropout_schedule:
   - [0, 0.5]
 learning_rate_schedule:
-  - [0, 1.0e-4]
+  - [0, 1.0e-5]
+  - [1_000, 1.0e-3]
+  - [900_000, 1.0e-5]
 reduction_factor_schedule:
   - [0, 10]
   - [20_000, 5]
