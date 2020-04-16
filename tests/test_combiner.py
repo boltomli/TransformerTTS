@@ -26,8 +26,8 @@ class TestCombiner(unittest.TestCase):
         model = config_loader.get_model()
         config_loader.compile_model(model)
         data_prep = DataPrepper(mel_channels=self.config['mel_channels'],
-                                start_vec_val=self.config['mel_start_vec_value'],
-                                end_vec_val=self.config['mel_end_vec_value'],
+                                start_vec_val=self.config['mel_start_value'],
+                                end_vec_val=self.config['mel_end_value'],
                                 tokenizer=model.tokenizer)
         train_samples = [data_prep._run('repeated text', 'repeated_text', mel, include_text=False) for mel in test_mels]
         train_set_gen = lambda: (item for item in train_samples)

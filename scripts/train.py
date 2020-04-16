@@ -120,9 +120,7 @@ print_dictionary(config, recursion_level=1)
 # get model, prepare data for model, create datasets
 model = config_loader.get_model()
 config_loader.compile_model(model)
-data_prep = DataPrepper(mel_channels=config['mel_channels'],
-                        start_vec_val=config['mel_start_vec_value'],
-                        end_vec_val=config['mel_end_vec_value'],
+data_prep = DataPrepper(config=config_loader,
                         tokenizer=model.tokenizer)
 
 test_list = [data_prep(s, include_text=True) for s in val_samples]
@@ -218,8 +216,8 @@ for _ in t:
             summary_manager.display_mel(mel=pred_mel, tag=f'Test/predicted_mel {j}')
             summary_manager.display_mel(mel=target_mel, tag=f'Test/target_mel {j}')
             if model.step > config['audio_start_step']:
-                summary_manager.display_audio(tag='Target', mel=target_mel, config=config)
-                summary_manager.display_audio(tag='Prediction', mel=pred_mel, config=config)
+                summary_manager.display_audio(tag='Target', mel=target_mel, config=config_loader)
+                summary_manager.display_audio(tag='Prediction', mel=pred_mel, config=config_loader)
         
         t.display(f"Predictions at time step {model.step} took {sum(timings)}s ({timings})",
                   pos=len(config['n_steps_avg_losses']) + 4)
