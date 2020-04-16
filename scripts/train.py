@@ -180,11 +180,11 @@ for _ in t:
     summary_manager.display_scalar(tag='Meta/reduction_factor', scalar_value=model.r)
     if (model.step + 1) % config['train_images_plotting_frequency'] == 0:
         summary_manager.display_attention_heads(output, tag='Train')
-        summary_manager.display_mel(mel=output['mel_linear'][0], tag=f'Train/linear_mel_out')
-        summary_manager.display_mel(mel=output['final_output'][0], tag=f'Train/predicted_mel')
+        summary_manager.display_mel(mel=output['mel_linear'][0], tag=f'Train/linear_mel_out', config=config_loader)
+        summary_manager.display_mel(mel=output['final_output'][0], tag=f'Train/predicted_mel', config=config_loader)
         residual = abs(output['mel_linear'] - output['final_output'])
-        summary_manager.display_mel(mel=residual[0], tag=f'Train/conv-linear_residual')
-        summary_manager.display_mel(mel=mel[0], tag=f'Train/target_mel')
+        summary_manager.display_mel(mel=residual[0], tag=f'Train/conv-linear_residual', config=config_loader)
+        summary_manager.display_mel(mel=mel[0], tag=f'Train/target_mel', config=config_loader)
     
     if (model.step + 1) % config['weights_save_frequency'] == 0:
         save_path = manager.save()
@@ -213,8 +213,8 @@ for _ in t:
             target_mel = mel
             timings.append(time_taken)
             summary_manager.display_attention_heads(outputs=pred, tag='Test')
-            summary_manager.display_mel(mel=pred_mel, tag=f'Test/predicted_mel {j}')
-            summary_manager.display_mel(mel=target_mel, tag=f'Test/target_mel {j}')
+            summary_manager.display_mel(mel=pred_mel, tag=f'Test/predicted_mel {j}', config=config_loader)
+            summary_manager.display_mel(mel=target_mel, tag=f'Test/target_mel {j}', config=config_loader)
             if model.step > config['audio_start_step']:
                 summary_manager.display_audio(tag='Target', mel=target_mel, config=config_loader)
                 summary_manager.display_audio(tag='Prediction', mel=pred_mel, config=config_loader)

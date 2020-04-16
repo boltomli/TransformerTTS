@@ -2,7 +2,7 @@ from pathlib import Path
 
 import tensorflow as tf
 
-from utils.audio import reconstruct_waveform
+from utils.audio import reconstruct_waveform, denormalize, db_to_amp
 from utils.display import buffer_mel
 from preprocessing.utils import norm_tensor
 from utils.decorators import ignore_exception
@@ -81,8 +81,10 @@ class SummaryManager:
             self.add_image(str(batch_plot_path), image_batch)
     
     @ignore_exception
-    def display_mel(self, mel, tag='', sr=22050):
-        img = tf.transpose(tf.exp(mel))
+    def display_mel(self, mel, config, tag='', sr=22050):
+        denormalized = denormalize(mel, config)
+        amp_mel = db_to_amp(denormalized)
+        img = tf.transpose(amp_mel)
         buf = buffer_mel(img, sr=sr)
         img_tf = tf.image.decode_png(buf.getvalue(), channels=3)
         self.add_image(tag, tf.expand_dims(img_tf, 0))
