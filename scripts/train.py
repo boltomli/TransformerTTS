@@ -147,9 +147,7 @@ if manager.latest_checkpoint:
     print(f'\nresuming training from step {model.step} ({manager.latest_checkpoint})')
 else:
     print(f'\nstarting training from scratch')
-
 # main event
-
 print('\nTRAINING')
 losses = []
 _ = train_dataset.next_batch()
@@ -199,27 +197,21 @@ for _ in t:
                   pos=len(config['n_steps_avg_losses']) + 3)
     
     if (model.step + 1) % config['prediction_frequency'] == 0 and (model.step >= config['prediction_start_step']):
-        timed_predict = time_it(model.predict)
-        timings = []
         for j in range(config['n_predictions']):
             mel, phonemes, stop, text_seq = test_list[j]
             t.display(f'Predicting {j}', pos=len(config['n_steps_avg_losses']) + 4)
-            pred, time_taken = timed_predict(phonemes,
-                                             max_length=decoder_prenet_dropout,
-                                             decoder_prenet_dropout=mel.shape[0] + 50,
-                                             encode=False,
-                                             verbose=False)
+            pred = model.predict(phonemes,
+                                 max_length=mel.shape[0] + 50,
+                                 decoder_prenet_dropout=decoder_prenet_dropout,
+                                 encode=False,
+                                 verbose=False)
             pred_mel = pred['mel']
             target_mel = mel
-            timings.append(time_taken)
             summary_manager.display_attention_heads(outputs=pred, tag='Test')
             summary_manager.display_mel(mel=pred_mel, tag=f'Test/predicted_mel {j}', config=config_loader)
             summary_manager.display_mel(mel=target_mel, tag=f'Test/target_mel {j}', config=config_loader)
             if model.step > config['audio_start_step']:
                 summary_manager.display_audio(tag='Target', mel=target_mel, config=config_loader)
                 summary_manager.display_audio(tag='Prediction', mel=pred_mel, config=config_loader)
-        
-        t.display(f"Predictions at time step {model.step} took {sum(timings)}s ({timings})",
-                  pos=len(config['n_steps_avg_losses']) + 4)
 
 print('Done.')

@@ -29,7 +29,7 @@ config = configloader.config
 mel_dir = os.path.join(args.TARGET_DIR, 'mels')
 if not os.path.exists(mel_dir):
     os.makedirs(mel_dir)
-    
+
 phon_path = os.path.join(args.TARGET_DIR, 'phonemes.npy')
 if os.path.exists(phon_path):
     print("using cached phonemes")
@@ -62,8 +62,8 @@ else:
         np.save(phon_path, audio_data, allow_pickle=True)
 
 print('\nBuilding dataset and writing files')
-random.seed(42)
-random.shuffle(audio_data)
+np.random.seed(42)
+np.random.shuffle(audio_data)
 test_metafile = os.path.join(args.TARGET_DIR, 'test_metafile.txt')
 train_metafile = os.path.join(args.TARGET_DIR, 'train_metafile.txt')
 
