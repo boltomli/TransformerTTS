@@ -62,8 +62,7 @@ def validate(model,
         val_loss['loss'] += model_out['loss']
     val_loss['loss'] /= norm
     summary_manager.display_loss(model_out, tag='Validation', plot_all=True)
-    summary_manager.display_attention_heads(model_out, tag='Validation')
-    summary_manager.display_attention_heads(output, tag='Train')
+    summary_manager.display_attention_heads(model_out, tag='ValidationAttentionHeads')
     summary_manager.display_mel(mel=model_out['mel_linear'][0], tag=f'Validation/linear_mel_out')
     summary_manager.display_mel(mel=model_out['final_output'][0], tag=f'Validation/predicted_mel')
     residual = abs(model_out['mel_linear'] - model_out['final_output'])
@@ -177,7 +176,7 @@ for _ in t:
     summary_manager.display_scalar(tag='Meta/learning_rate', scalar_value=model.optimizer.lr)
     summary_manager.display_scalar(tag='Meta/reduction_factor', scalar_value=model.r)
     if (model.step + 1) % config['train_images_plotting_frequency'] == 0:
-        summary_manager.display_attention_heads(output, tag='Train')
+        summary_manager.display_attention_heads(output, tag='TrainAttentionHeads')
         summary_manager.display_mel(mel=output['mel_linear'][0], tag=f'Train/linear_mel_out')
         summary_manager.display_mel(mel=output['final_output'][0], tag=f'Train/predicted_mel')
         residual = abs(output['mel_linear'] - output['final_output'])
