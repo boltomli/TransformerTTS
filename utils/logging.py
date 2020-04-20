@@ -101,7 +101,7 @@ class SummaryManager:
     
     @ignore_exception
     def display_audio(self, tag, mel, config):
-        wav = reconstruct_waveform(mel, config)
+        wav = reconstruct_waveform(mel.T, config)
         wav = tf.expand_dims(wav, 0)
         wav = tf.expand_dims(wav, -1)
-        self.add_audio(tag, wav.numpy(), sr=config['sampling_rate'])
+        self.add_audio(tag, wav.numpy(), sr=config.sampling_rate)
