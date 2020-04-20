@@ -3,7 +3,7 @@ from pathlib import Path
 import tensorflow as tf
 
 from utils.audio import reconstruct_waveform, denormalize
-from utils.display import buffer_mel
+from utils.display import buffer_mel, tight_grid
 from preprocessing.utils import norm_tensor
 from utils.decorators import ignore_exception
 
@@ -75,10 +75,11 @@ class SummaryManager:
     @ignore_exception
     def display_attention_heads(self, outputs, tag=''):
         for k in outputs['attention_weights'].keys():
-            image_batch = norm_tensor(tf.expand_dims(outputs['attention_weights'][k][0, :, :, :], -1))
-            # dim 0 of image_batch is now number of heads
-            batch_plot_path = f'{tag}AttentionHeads/{k}'
-            self.add_image(str(batch_plot_path), image_batch)
+            if k.endswith('block2'):
+                image = tight_grid(norm_tensor(outputs['attention_weights'][k][0]))
+                # dim 0 of image_batch is now number of heads
+                batch_plot_path = f'{tag}AttentionHeads/{k}'
+                self.add_image(str(batch_plot_path), tf.expand_dims(tf.expand_dims(image, 0), -1))
     
     @ignore_exception
     def display_mel(self, mel, config, tag='', sr=22050):
@@ -101,7 +102,7 @@ class SummaryManager:
     
     @ignore_exception
     def display_audio(self, tag, mel, config):
-        wav = reconstruct_waveform(mel.T, config)
+        wav = reconstruct_waveform(tf.transpose(mel), config)
         wav = tf.expand_dims(wav, 0)
         wav = tf.expand_dims(wav, -1)
         self.add_audio(tag, wav.numpy(), sr=config.sampling_rate)
