@@ -15,7 +15,6 @@ class ConfigLoader:
             config = self._load_config(config)
         self.config = config
         self._check_config()
-        self.__assign_attributes()  # makes config items accessible as class attributes
         self.learning_rate = np.array(self.config['learning_rate_schedule'])[0, 1].astype(np.float32)
         self.max_r = np.array(self.config['reduction_factor_schedule'])[0, 1].astype(np.int32)
         self.stop_scaling = config.get('stop_loss_scaling', 1.)
@@ -71,7 +70,3 @@ class ConfigLoader:
     
     def dump_config(self, config_path):
         self.yaml.dump(self.config, open(config_path, 'w'))
-    
-    def __assign_attributes(self):
-        for key in self.config.keys():
-            setattr(self, key, self.config[key])

@@ -26,15 +26,18 @@ class SummaryManager:
     
         :arg model: model object that is trained
         :arg log_dir: base directory where logs of a config are created
+        :arg config: configuration dictionary
         :arg max_plot_frequency: every how many steps to plot
     """
     
     def __init__(self,
                  model,
                  log_dir,
+                 config,
                  max_plot_frequency=10):
         self.model = model
         self.log_dir = Path(log_dir)
+        self.config = config
         self.plot_frequency = max_plot_frequency
         self.writers = {'log_dir': tf.summary.create_file_writer(str(self.log_dir))}
     
@@ -82,8 +85,8 @@ class SummaryManager:
                 self.add_image(str(batch_plot_path), tf.expand_dims(tf.expand_dims(image, 0), -1))
     
     @ignore_exception
-    def display_mel(self, mel, config, tag='', sr=22050):
-        amp_mel = denormalize(mel, config)
+    def display_mel(self, mel, tag='', sr=22050):
+        amp_mel = denormalize(mel, self.config)
         img = tf.transpose(amp_mel)
         buf = buffer_mel(img, sr=sr)
         img_tf = tf.image.decode_png(buf.getvalue(), channels=3)
@@ -101,8 +104,8 @@ class SummaryManager:
         self.add_scalar(tag=tag, scalar_value=scalar_value)
     
     @ignore_exception
-    def display_audio(self, tag, mel, config):
-        wav = reconstruct_waveform(tf.transpose(mel), config)
+    def display_audio(self, tag, mel):
+        wav = reconstruct_waveform(tf.transpose(mel), self.config)
         wav = tf.expand_dims(wav, 0)
         wav = tf.expand_dims(wav, -1)
-        self.add_audio(tag, wav.numpy(), sr=config.sampling_rate)
+        self.add_audio(tag, wav.numpy(), sr=self.config['sampling_rate'])

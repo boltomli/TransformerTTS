@@ -10,10 +10,10 @@ class DataPrepper:
     def __init__(self,
                  config,
                  tokenizer: Union[Tokenizer]):
-        self.start_vec = np.ones((1, config.mel_channels)) * config.mel_start_value
-        self.end_vec = np.ones((1, config.mel_channels)) * config.mel_end_value
+        self.start_vec = np.ones((1, config['mel_channels'])) * config['mel_start_value']
+        self.end_vec = np.ones((1, config['mel_channels'])) * config['mel_end_value']
         self.tokenizer = tokenizer
-        self.mel_channels = config.mel_channels
+        self.mel_channels = config['mel_channels']
     
     def __call__(self, sample, include_text=True):
         phonemes, text, mel_path = sample

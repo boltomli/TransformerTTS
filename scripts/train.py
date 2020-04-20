@@ -64,11 +64,11 @@ def validate(model,
     summary_manager.display_loss(model_out, tag='Validation', plot_all=True)
     summary_manager.display_attention_heads(model_out, tag='Validation')
     summary_manager.display_attention_heads(output, tag='Train')
-    summary_manager.display_mel(mel=model_out['mel_linear'][0], tag=f'Validation/linear_mel_out', config=config_loader)
-    summary_manager.display_mel(mel=model_out['final_output'][0], tag=f'Validation/predicted_mel', config=config_loader)
+    summary_manager.display_mel(mel=model_out['mel_linear'][0], tag=f'Validation/linear_mel_out')
+    summary_manager.display_mel(mel=model_out['final_output'][0], tag=f'Validation/predicted_mel')
     residual = abs(model_out['mel_linear'] - model_out['final_output'])
-    summary_manager.display_mel(mel=residual[0], tag=f'Validation/conv-linear_residual', config=config_loader)
-    summary_manager.display_mel(mel=val_mel[0], tag=f'Validation/target_mel', config=config_loader)
+    summary_manager.display_mel(mel=residual[0], tag=f'Validation/conv-linear_residual')
+    summary_manager.display_mel(mel=val_mel[0], tag=f'Validation/target_mel')
     return val_loss['loss']
 
 
@@ -120,7 +120,7 @@ print_dictionary(config, recursion_level=1)
 # get model, prepare data for model, create datasets
 model = config_loader.get_model()
 config_loader.compile_model(model)
-data_prep = DataPrepper(config=config_loader,
+data_prep = DataPrepper(config=config,
                         tokenizer=model.tokenizer)
 
 test_list = [data_prep(s, include_text=True) for s in val_samples]
@@ -135,7 +135,7 @@ val_dataset = Dataset(samples=val_samples,
 
 # create logger and checkpointer and restore latest model
 
-summary_manager = SummaryManager(model=model, log_dir=log_dir)
+summary_manager = SummaryManager(model=model, log_dir=log_dir, config=config)
 checkpoint = tf.train.Checkpoint(step=tf.Variable(1),
                                  optimizer=model.optimizer,
                                  net=model)
@@ -178,11 +178,11 @@ for _ in t:
     summary_manager.display_scalar(tag='Meta/reduction_factor', scalar_value=model.r)
     if (model.step + 1) % config['train_images_plotting_frequency'] == 0:
         summary_manager.display_attention_heads(output, tag='Train')
-        summary_manager.display_mel(mel=output['mel_linear'][0], tag=f'Train/linear_mel_out', config=config_loader)
-        summary_manager.display_mel(mel=output['final_output'][0], tag=f'Train/predicted_mel', config=config_loader)
+        summary_manager.display_mel(mel=output['mel_linear'][0], tag=f'Train/linear_mel_out')
+        summary_manager.display_mel(mel=output['final_output'][0], tag=f'Train/predicted_mel')
         residual = abs(output['mel_linear'] - output['final_output'])
-        summary_manager.display_mel(mel=residual[0], tag=f'Train/conv-linear_residual', config=config_loader)
-        summary_manager.display_mel(mel=mel[0], tag=f'Train/target_mel', config=config_loader)
+        summary_manager.display_mel(mel=residual[0], tag=f'Train/conv-linear_residual')
+        summary_manager.display_mel(mel=mel[0], tag=f'Train/target_mel')
     
     if (model.step + 1) % config['weights_save_frequency'] == 0:
         save_path = manager.save()
@@ -208,10 +208,10 @@ for _ in t:
             pred_mel = pred['mel']
             target_mel = mel
             summary_manager.display_attention_heads(outputs=pred, tag=f'TestAttentionHeads/sample {j}')
-            summary_manager.display_mel(mel=pred_mel, tag=f'Test/sample {j}/predicted_mel', config=config_loader)
-            summary_manager.display_mel(mel=target_mel, tag=f'Test/sample {j}/target_mel', config=config_loader)
+            summary_manager.display_mel(mel=pred_mel, tag=f'Test/sample {j}/predicted_mel')
+            summary_manager.display_mel(mel=target_mel, tag=f'Test/sample {j}/target_mel')
             if model.step > config['audio_start_step']:
-                summary_manager.display_audio(tag=f'Target/sample {j}', mel=target_mel, config=config_loader)
-                summary_manager.display_audio(tag=f'Prediction/sample {j}', mel=pred_mel, config=config_loader)
+                summary_manager.display_audio(tag=f'Target/sample {j}', mel=target_mel)
+                summary_manager.display_audio(tag=f'Prediction/sample {j}', mel=pred_mel)
 
 print('Done.')
