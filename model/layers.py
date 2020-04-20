@@ -44,6 +44,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         super(MultiHeadAttention, self).__init__(**kwargs)
         self.num_heads = num_heads
         self.model_dim = model_dim
+        self.head_drop = HeadDrop()
         
         assert model_dim % self.num_heads == 0
         
@@ -63,7 +64,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, perm=[0, 2, 1, 3])
     
-    def call(self, v, k, q_in, mask):
+    def call(self, v, k, q_in, mask, training):
         batch_size = tf.shape(q_in)[0]
         
         q = self.wq(q_in)  # (batch_size, seq_len, model_dim)
@@ -75,7 +76,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         v = self.split_heads(v, batch_size)  # (batch_size, num_heads, seq_len_v, depth)
         
         scaled_attention, attention_weights = scaled_dot_product_attention(q, k, v, mask)
-        
+        scaled_attention = self.head_drop(scaled_attention, training=training)
         scaled_attention = tf.transpose(scaled_attention,
                                         perm=[0, 2, 1, 3])  # (batch_size, seq_len_q, num_heads, depth)
         concat_attention = tf.reshape(scaled_attention,
@@ -95,7 +96,7 @@ class SelfAttentionResNorm(tf.keras.layers.Layer):
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
     
     def call(self, x, training, mask):
-        attn_out, attn_weights = self.mha(x, x, x, mask)  # (batch_size, input_seq_len, model_dim)
+        attn_out, attn_weights = self.mha(x, x, x, mask, training=training)  # (batch_size, input_seq_len, model_dim)
         attn_out = self.dropout(attn_out, training=training)
         out = self.ln(x + attn_out)  # (batch_size, input_seq_len, model_dim)
         return out, attn_weights
@@ -115,6 +116,27 @@ class FFNResNorm(tf.keras.layers.Layer):
         out = self.ln(x + ffn_out)  # (batch_size, input_seq_len, model_dim)
         
         return out
+
+
+class HeadDrop(tf.keras.layers.Layer):
+    """ Randomly drop all but 1 head. """
+    
+    def __init__(self, **kwargs):
+        super(HeadDrop, self).__init__(**kwargs)
+    
+    def call(self, batch, training):
+        if not training:
+            return batch
+        if len(tf.shape(batch)) != 4:  # single head
+            raise Exception('Attention values should be 4 dimensional')
+        batch_size = tf.shape(batch)[0]
+        head_n = tf.shape(batch)[1]
+        if head_n == 1:
+            return batch
+        keep_head_idx = tf.random.uniform((batch_size, 1), maxval=head_n, dtype=tf.int32)
+        keep_head = tf.cast(tf.equal(tf.range(head_n)[tf.newaxis], keep_head_idx), dtype=tf.float32)
+        mask = keep_head[:, :, tf.newaxis, tf.newaxis]
+        return batch * mask
 
 
 class EncoderLayer(tf.keras.layers.Layer):
@@ -159,7 +181,7 @@ class CrossAttentionResnorm(tf.keras.layers.Layer):
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
     
     def call(self, q, k, v, training, mask):
-        attn_values, attn_weights = self.mha(v, k=k, q_in=q, mask=mask)
+        attn_values, attn_weights = self.mha(v, k=k, q_in=q, mask=mask, training=training)
         attn_values = self.dropout(attn_values, training=training)
         out = self.layernorm(attn_values + q)
         return out, attn_weights
