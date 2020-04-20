@@ -207,11 +207,11 @@ for _ in t:
                                  verbose=False)
             pred_mel = pred['mel']
             target_mel = mel
-            summary_manager.display_attention_heads(outputs=pred, tag='Test')
-            summary_manager.display_mel(mel=pred_mel, tag=f'Test/predicted_mel {j}', config=config_loader)
-            summary_manager.display_mel(mel=target_mel, tag=f'Test/target_mel {j}', config=config_loader)
+            summary_manager.display_attention_heads(outputs=pred, tag=f'TestAttentionHeads/sample {j}')
+            summary_manager.display_mel(mel=pred_mel, tag=f'Test/sample {j}/predicted_mel', config=config_loader)
+            summary_manager.display_mel(mel=target_mel, tag=f'Test/sample {j}/target_mel', config=config_loader)
             if model.step > config['audio_start_step']:
-                summary_manager.display_audio(tag='Target', mel=target_mel, config=config_loader)
-                summary_manager.display_audio(tag='Prediction', mel=pred_mel, config=config_loader)
+                summary_manager.display_audio(tag=f'Target/sample {j}', mel=target_mel, config=config_loader)
+                summary_manager.display_audio(tag=f'Prediction/sample {j}', mel=pred_mel, config=config_loader)
 
 print('Done.')

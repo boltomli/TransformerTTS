@@ -78,7 +78,7 @@ class SummaryManager:
             if k.endswith('block2'):
                 image = tight_grid(norm_tensor(outputs['attention_weights'][k][0]))
                 # dim 0 of image_batch is now number of heads
-                batch_plot_path = f'{tag}AttentionHeads/{k}'
+                batch_plot_path = f'{tag}/{k}'
                 self.add_image(str(batch_plot_path), tf.expand_dims(tf.expand_dims(image, 0), -1))
     
     @ignore_exception
