@@ -64,7 +64,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, perm=[0, 2, 1, 3])
     
-    def call(self, v, k, q_in, mask, training):
+    def call(self, v, k, q_in, mask, training, is_self=False):
         batch_size = tf.shape(q_in)[0]
         
         q = self.wq(q_in)  # (batch_size, seq_len, model_dim)
@@ -76,7 +76,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         v = self.split_heads(v, batch_size)  # (batch_size, num_heads, seq_len_v, depth)
         
         scaled_attention, attention_weights = scaled_dot_product_attention(q, k, v, mask)
-        scaled_attention = self.head_drop(scaled_attention, training=training)
+        scaled_attention = self.head_drop(scaled_attention, training=(training and not is_self))
         scaled_attention = tf.transpose(scaled_attention,
                                         perm=[0, 2, 1, 3])  # (batch_size, seq_len_q, num_heads, depth)
         concat_attention = tf.reshape(scaled_attention,
@@ -96,7 +96,7 @@ class SelfAttentionResNorm(tf.keras.layers.Layer):
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
     
     def call(self, x, training, mask):
-        attn_out, attn_weights = self.mha(x, x, x, mask, training=training)  # (batch_size, input_seq_len, model_dim)
+        attn_out, attn_weights = self.mha(x, x, x, mask, training=training, is_self=True)  # (batch_size, input_seq_len, model_dim)
         attn_out = self.dropout(attn_out, training=training)
         out = self.ln(x + attn_out)  # (batch_size, input_seq_len, model_dim)
         return out, attn_weights
