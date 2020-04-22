@@ -204,12 +204,13 @@ class AutoregressiveTransformer(tf.keras.models.Model):
         return model_out, tape
     
     def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout, drop_n_heads):
-        model_out, tape = self._train_forward(inp, tar, stop_prob, decoder_prenet_dropout, training=True,drop_n_heads=drop_n_heads)
+        model_out, tape = self._train_forward(inp, tar, stop_prob, decoder_prenet_dropout, training=True,
+                                              drop_n_heads=drop_n_heads)
         gradients = tape.gradient(model_out['loss'], self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         return model_out
     
-    def _val_step(self, inp, tar, stop_prob, decoder_prenet_dropout):
+    def _val_step(self, inp, tar, stop_prob, decoder_prenet_dropout, drop_n_heads=0):
         model_out, _ = self._train_forward(inp, tar, stop_prob, decoder_prenet_dropout, training=False, drop_n_heads=0)
         return model_out
     
