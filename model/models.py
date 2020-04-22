@@ -71,12 +71,13 @@ class AutoregressiveTransformer(tf.keras.models.Model):
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
             tf.TensorSpec(shape=(None, None, mel_channels), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
-            tf.TensorSpec(shape=(None), dtype=tf.float32)
+            tf.TensorSpec(shape=(None), dtype=tf.float32),
+            tf.TensorSpec(shape=(None), dtype=tf.int32)
         ]
         self.forward_input_signature = [
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
             tf.TensorSpec(shape=(None, None, mel_channels), dtype=tf.float32),
-            tf.TensorSpec(shape=(None), dtype=tf.float32)
+            tf.TensorSpec(shape=(None), dtype=tf.float32),
         ]
         self.debug = debug
         self.forward = self.__apply_signature(self._forward, self.forward_input_signature)
@@ -96,17 +97,20 @@ class AutoregressiveTransformer(tf.keras.models.Model):
              enc_padding_mask,
              look_ahead_mask,
              dec_padding_mask,
-             decoder_prenet_dropout):
+             decoder_prenet_dropout,
+             drop_n_heads, ):
         enc_input = self.encoder_prenet(inputs)
         enc_output = self.encoder(inputs=enc_input,
                                   training=training,
-                                  mask=enc_padding_mask)
+                                  mask=enc_padding_mask,
+                                  drop_n_heads=drop_n_heads)
         dec_input = self.decoder_prenet(targets, training=training, dropout_rate=decoder_prenet_dropout)
         dec_output, attention_weights = self.decoder(inputs=dec_input,
                                                      enc_output=enc_output,
                                                      training=training,
                                                      look_ahead_mask=look_ahead_mask,
-                                                     padding_mask=dec_padding_mask)
+                                                     padding_mask=dec_padding_mask,
+                                                     drop_n_heads=drop_n_heads)
         out_proj = self.final_proj_mel(dec_output)[:, :, :self.r * self.mel_channels]
         b = int(tf.shape(out_proj)[0])
         t = int(tf.shape(out_proj)[1])
@@ -164,10 +168,11 @@ class AutoregressiveTransformer(tf.keras.models.Model):
                                   enc_padding_mask=enc_padding_mask,
                                   look_ahead_mask=combined_mask,
                                   dec_padding_mask=dec_padding_mask,
-                                  decoder_prenet_dropout=decoder_prenet_dropout)
+                                  decoder_prenet_dropout=decoder_prenet_dropout,
+                                  drop_n_heads=0)
         return model_out
     
-    def _train_forward(self, inp, tar, stop_prob, decoder_prenet_dropout, training):
+    def _train_forward(self, inp, tar, stop_prob, decoder_prenet_dropout, training, drop_n_heads):
         tar_inp = tar[:, :-1]
         tar_real = tar[:, 1:]
         tar_stop_prob = stop_prob[:, 1:]
@@ -183,7 +188,8 @@ class AutoregressiveTransformer(tf.keras.models.Model):
                                       enc_padding_mask=enc_padding_mask,
                                       look_ahead_mask=combined_mask,
                                       dec_padding_mask=dec_padding_mask,
-                                      decoder_prenet_dropout=decoder_prenet_dropout)
+                                      decoder_prenet_dropout=decoder_prenet_dropout,
+                                      drop_n_heads=drop_n_heads)
             loss, loss_vals = weighted_sum_losses((tar_real,
                                                    tar_stop_prob,
                                                    tar_real),
@@ -197,14 +203,14 @@ class AutoregressiveTransformer(tf.keras.models.Model):
         model_out.update({'reduced_target': tar_mel})
         return model_out, tape
     
-    def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout):
-        model_out, tape = self._train_forward(inp, tar, stop_prob, decoder_prenet_dropout, training=True)
+    def _train_step(self, inp, tar, stop_prob, decoder_prenet_dropout, drop_n_heads):
+        model_out, tape = self._train_forward(inp, tar, stop_prob, decoder_prenet_dropout, training=True,drop_n_heads=drop_n_heads)
         gradients = tape.gradient(model_out['loss'], self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         return model_out
     
     def _val_step(self, inp, tar, stop_prob, decoder_prenet_dropout):
-        model_out, _ = self._train_forward(inp, tar, stop_prob, decoder_prenet_dropout, training=False)
+        model_out, _ = self._train_forward(inp, tar, stop_prob, decoder_prenet_dropout, training=False, drop_n_heads=0)
         return model_out
     
     @property

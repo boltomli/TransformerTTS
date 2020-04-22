@@ -157,13 +157,15 @@ for _ in t:
     decoder_prenet_dropout = piecewise_linear_schedule(model.step, config['dropout_schedule'])
     learning_rate = piecewise_linear_schedule(model.step, config['learning_rate_schedule'])
     reduction_factor = reduction_schedule(model.step, config['reduction_factor_schedule'])
+    drop_n_heads = tf.cast(reduction_schedule(model.step, config['head_drop_schedule']), tf.int32)
     t.display(f'reduction factor {reduction_factor}', pos=10)
     model.set_r(reduction_factor)
     model.set_learning_rates(learning_rate)
     output = model.train_step(inp=phonemes,
                               tar=mel,
                               stop_prob=stop,
-                              decoder_prenet_dropout=decoder_prenet_dropout)
+                              decoder_prenet_dropout=decoder_prenet_dropout,
+                              drop_n_heads=drop_n_heads)
     losses.append(float(output['loss']))
     
     t.display(f'step loss: {losses[-1]}', pos=1)
@@ -175,6 +177,7 @@ for _ in t:
     summary_manager.display_scalar(tag='Meta/dropout', scalar_value=decoder_prenet_dropout)
     summary_manager.display_scalar(tag='Meta/learning_rate', scalar_value=model.optimizer.lr)
     summary_manager.display_scalar(tag='Meta/reduction_factor', scalar_value=model.r)
+    summary_manager.display_scalar(tag='Meta/drop_n_heads', scalar_value=drop_n_heads)
     if (model.step + 1) % config['train_images_plotting_frequency'] == 0:
         summary_manager.display_attention_heads(output, tag='TrainAttentionHeads')
         summary_manager.display_mel(mel=output['mel_linear'][0], tag=f'Train/linear_mel_out')

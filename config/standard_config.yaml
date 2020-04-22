@@ -37,8 +37,17 @@ max_norm: 4 # normalizes values between -max norm, max_norm
 # TRAINING
 dropout_schedule:
   - [0, 0.5]
+  - [180_000, 0.5]
+  - [300_000, 0.]
 learning_rate_schedule:
   - [0, 1.0e-4]
+head_drop_schedule:
+  - [0, 0]
+  - [20_000, 1]
+  - [30_000, 2]
+  - [40_000, 3]
+  - [180_000, 2]
+  - [300_000, 1]
 reduction_factor_schedule:
   - [0, 10]
   - [20_000, 5]
