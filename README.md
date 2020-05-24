@@ -53,6 +53,8 @@ Read the individual scripts for more command line arguments.
 ## Dataset
 You can directly use [LJSpeech](https://keithito.com/LJ-Speech-Dataset/) to create the training dataset.
 
+For **Chinese** dataset [databaker 标贝科技中文标准女声](https://www.data-baker.com/open_source.html), check `databaker.py` first to convert the text format. ALso, have to follow the instruction to install [additional data for eSpeak](http://espeak.sourceforge.net/data/).
+
 #### Configuration
 * If training LJSpeech, or if unsure, simply use ```config/standard```
 * **EDIT PATHS**: in `data_config.yaml` edit the paths to point at your dataset and log folders

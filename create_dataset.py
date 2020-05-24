@@ -46,7 +46,10 @@ else:
             filename, text = l_split[0], l_split[-1]
             if filename.endswith('.wav'):
                 filename = filename.split('.')[-1]
-            text = text_cleaner.clean(text)
+            if config['phoneme_language'] not in ['cmn', 'zh']:
+                text = text_cleaner.clean(text)
+            else:
+                text = text.strip()
             audio_data.append((filename, text))
     audio_data = np.array(audio_data)
     print('\nPhonemizing')
@@ -54,6 +57,8 @@ else:
     phonemizer = Phonemizer(config['phoneme_language'])
     texts = audio_data[:, 1]
     batch_size = 250  # batch phonemization to avoid memory issues.
+    if config['phoneme_language'] in ['cmn', 'zh']:
+        batch_size = 1 # full Chinese language data is rather big.
     phonemes = []
     for i in tqdm.tqdm(range(0, len(audio_data), batch_size)):
         batch = texts[i: i + batch_size]
